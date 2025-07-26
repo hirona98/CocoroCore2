@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "CocoroCore2"
+version = "2.0.0"
+description = "CocoroAI Unified Backend with MemOS Integration"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "CocoroAI Team"}
+]
+keywords = [
+    "ai",
+    "avatar",
+    "memory",
+    "llm",
+    "desktop-assistant",
+    "memoryos",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Communications :: Chat",
+]
+
+[tool.ruff]
+# Target Python version
+target-version = "py310"
+# Line length (unlimited)
+line-length = 320
+
+# Linter settings
+[tool.ruff.lint]
+# Enable rules
+# E, F: flake8 compatible rules
+# I: isort compatible
+# D: docstring
+# S: bandit compatible security checks
+select = ["E", "F", "I", "S"]
+ignore = [
+  "D",    # Documentation related
+  "F401", # import but unused
+  "I001", # isort settings
+  "S311", # suspicious-random-choice
+  "S603", # subprocess-without-shell-equals-true
+  "S608", # hardcoded-sql-expression
+]
+
+# Exclude directories
+exclude = ["venv", ".venv", "build", "dist", "__pycache__"]
+
+# isort settings
+[tool.ruff.lint.isort]
+known-first-party = ["cocoro_core2"]
+
+[tool.pytest.ini_options]
+# PyTest settings for running tests
+asyncio_mode = "auto"
+pythonpath = "src"
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

@@ -1,0 +1,44 @@
+{
+  "user_id": "root",
+  "chat_model": {
+    "backend": "openai",
+    "config": {
+      "model_name_or_path": "claude-3-5-sonnet-latest",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "api_key": "${OPENAI_API_KEY}"
+    }
+  },
+  "mem_reader": {
+    "backend": "simple_struct",
+    "config": {
+      "llm": {
+        "backend": "openai",
+        "config": {
+          "model_name_or_path": "gpt-4o-mini",
+          "temperature": 0.0,
+          "api_key": "${OPENAI_API_KEY}"
+        }
+      },
+      "embedder": {
+        "backend": "openai",
+        "config": {
+          "model_name_or_path": "text-embedding-3-small",
+          "api_key": "${OPENAI_API_KEY}"
+        }
+      },
+      "chunker": {
+        "backend": "sentence",
+        "config": {
+          "chunk_size": 512,
+          "chunk_overlap": 128
+        }
+      }
+    }
+  },
+  "max_turns_window": 20,
+  "top_k": 5,
+  "enable_textual_memory": true,
+  "enable_activation_memory": false,
+  "enable_parametric_memory": false
+}

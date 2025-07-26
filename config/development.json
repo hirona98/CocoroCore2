@@ -1,0 +1,99 @@
+{
+  "version": "2.0.0",
+  "environment": "development",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 55601,
+    "workers": 1,
+    "reload": true,
+    "debug": true
+  },
+  "mos_config": {
+    "user_id": "hirona",
+    "chat_model": {
+      "backend": "openai",
+      "config": {
+        "model_name_or_path": "claude-3-5-sonnet-latest",
+        "temperature": 0.7,
+        "max_tokens": 4096,
+        "api_key": "${OPENAI_API_KEY}"
+      }
+    },
+    "mem_reader": {
+      "backend": "simple_struct",
+      "config": {
+        "llm": {
+          "backend": "openai",
+          "config": {
+            "model_name_or_path": "gpt-4o-mini",
+            "temperature": 0.0,
+            "api_key": "${OPENAI_API_KEY}"
+          }
+        },
+        "embedder": {
+          "backend": "openai",
+          "config": {
+            "model_name_or_path": "text-embedding-3-small",
+            "api_key": "${OPENAI_API_KEY}"
+          }
+        },
+        "chunker": {
+          "backend": "sentence",
+          "config": {
+            "chunk_size": 512,
+            "chunk_overlap": 128
+          }
+        }
+      }
+    },
+    "max_turns_window": 20,
+    "top_k": 5,
+    "enable_textual_memory": true,
+    "enable_activation_memory": false,
+    "enable_parametric_memory": false
+  },
+  "character": {
+    "name": "つくよみちゃん",
+    "personality": "friendly",
+    "voice_model": "tsukuyomi"
+  },
+  "speech": {
+    "enabled": true,
+    "vad": {
+      "auto_adjustment": true,
+      "fixed_threshold": -40.0,
+      "silence_duration_threshold": 2.0,
+      "max_duration": 30.0
+    },
+    "stt": {
+      "engine": "openai",
+      "model": "whisper-1",
+      "language": "ja",
+      "api_key": "${OPENAI_API_KEY}"
+    }
+  },
+  "shell_integration": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 55605,
+    "auto_tts": true,
+    "timeout": 30
+  },
+  "mcp": {
+    "enabled": true,
+    "config_file": "../UserData/CocoroAiMcp.json",
+    "timeout": 30
+  },
+  "logging": {
+    "level": "DEBUG",
+    "file": "logs/cocoro_core2.log",
+    "max_size_mb": 10,
+    "backup_count": 5,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "session": {
+    "timeout_seconds": 300,
+    "max_sessions": 1000,
+    "cleanup_interval_seconds": 30
+  }
+}
