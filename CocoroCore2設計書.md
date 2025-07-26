@@ -1,9 +1,9 @@
 # CocoroCore2 詳細設計書
 ## MemOSベース記憶統合システム
 
-### バージョン: 1.2.0
+### バージョン: 1.3.0
 ### 作成日: 2025-07-26
-### 最終更新: 2025-07-26 (MemOS実際仕様準拠修正)
+### 最終更新: 2025-07-26 (MemOS実際API仕様完全準拠)
 
 ---
 
@@ -151,17 +151,22 @@ class CocoroCore2App:
         # セッション管理はuser_idベース（MemOS準拠）
         self.session_mapping = {}  # session_id -> user_id マッピング
     
-    async def memos_chat(self, query: str, user_id: str) -> str:
-        """MemOS純正チャット（非ストリーミング）"""
-        return await self.mos.chat(query=query, user_id=user_id)
+    def memos_chat(self, query: str, user_id: str) -> str:
+        """MemOS純正チャット（非ストリーミング、同期）"""
+        return self.mos.chat(query=query, user_id=user_id)
         
-    async def add_memory(self, content: str, user_id: str, **metadata) -> None:
-        """記憶追加"""
-        await self.mos.add(memory_content=content, user_id=user_id, metadata=metadata)
+    def add_memory(self, content: str, user_id: str, **context) -> None:
+        """記憶追加（同期、metadata不サポート）"""
+        # MemOSはmetadataパラメータ未サポート、コンテキストを本文に含める
+        memory_content = content
+        if context:
+            memory_content += f" | {json.dumps(context)}"
+        self.mos.add(memory_content=memory_content, user_id=user_id)
         
-    async def search_memory(self, query: str, user_id: str) -> List[dict]:
-        """記憶検索"""
-        return await self.mos.search(query=query, user_id=user_id)
+    def search_memory(self, query: str, user_id: str) -> dict:
+        """記憶検索（同期、辞書形式返却）"""
+        # 返却値: {"text_mem": [{"cube_id": "...", "memories": [...]}], "act_mem": [], "para_mem": []}
+        return self.mos.search(query=query, user_id=user_id)
 ```
 
 #### 3.2.2 互換性レイヤー
@@ -687,7 +692,7 @@ class CocoroMemOSIntegrator:
 
 ## 7. セキュリティ・パフォーマンス
 
-シンプルさを優先するために考慮しないが、非同期処理による高速化程度は行う。
+シンプルさを優先するために、セキュリティとパフォーマンスは考慮しない。
 
 ---
 
