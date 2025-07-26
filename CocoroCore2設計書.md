@@ -1,9 +1,9 @@
 # CocoroCore2 詳細設計書
 ## MemOSベース記憶統合システム
 
-### バージョン: 1.1.0
+### バージョン: 1.2.0
 ### 作成日: 2025-07-26
-### 最終更新: 2025-07-26 (記憶管理統一化)
+### 最終更新: 2025-07-26 (MemOS実際仕様準拠修正)
 
 ---
 
@@ -146,31 +146,51 @@ class CocoroCore2App:
         # MemOSを直接統合
         self.mos = MOS(config.mos_config)
         self.config = config
-        self.session_manager = SessionManager()
         self.voice_processor = VoiceProcessor()
         self.mcp_tools = MCPToolsManager()
+        # セッション管理はuser_idベース（MemOS準拠）
+        self.session_mapping = {}  # session_id -> user_id マッピング
     
-    async def chat(self, request: ChatRequest) -> ChatResponse:
-        """メモリ統合チャット"""
+    async def memos_chat(self, query: str, user_id: str) -> str:
+        """MemOS純正チャット（非ストリーミング）"""
+        return await self.mos.chat(query=query, user_id=user_id)
         
-    async def add_memory(self, content: str, user_id: str) -> None:
+    async def add_memory(self, content: str, user_id: str, **metadata) -> None:
         """記憶追加"""
+        await self.mos.add(memory_content=content, user_id=user_id, metadata=metadata)
         
-    async def search_memory(self, query: str, user_id: str) -> List[Memory]:
+    async def search_memory(self, query: str, user_id: str) -> List[dict]:
         """記憶検索"""
+        return await self.mos.search(query=query, user_id=user_id)
 ```
 
 #### 3.2.2 互換性レイヤー
 ```python
-# 既存API互換性維持
+# 既存API互換性維持 - MemOS非ストリーミングをSSE変換
 class LegacyAPIAdapter:
     """既存CocoroCore APIとの互換性を提供"""
     
-    async def handle_legacy_chat(self, request: LegacyChatRequest) -> SSEResponse:
-        """既存/chatエンドポイントの処理"""
+    def __init__(self, core_app: CocoroCore2App):
+        self.core_app = core_app
+    
+    async def handle_legacy_chat(self, request: LegacyChatRequest) -> AsyncIterator[str]:
+        """既存/chatエンドポイント - MemOSレスポンスをSSE変換"""
+        # session_id -> user_id 変換
+        user_id = self._get_user_id_from_session(request.session_id)
+        
+        # MemOSから通常レスポンス取得
+        response = await self.core_app.memos_chat(
+            query=request.text,
+            user_id=user_id
+        )
+        
+        # SSE形式に変換してストリーミング風に送信
+        yield f'data: {{"type": "content", "content": "{response}", "finished": true}}\n\n'
+        yield f'data: [DONE]\n\n'
         
     async def handle_legacy_health(self) -> HealthResponse:
         """既存/healthエンドポイントの処理"""
+        # MemOS統合システム情報を含む
         
     async def handle_legacy_control(self, command: ControlCommand) -> StandardResponse:
         """既存/api/controlエンドポイントの処理"""
@@ -193,13 +213,15 @@ class SpeechToSpeechPipeline:
 
 ### 3.3 データフロー
 
-#### 3.3.1 通常チャット
+#### 3.3.1 通常チャット（互換性レイヤー経由）
 ```
-1. CocoroDock → POST /chat → CocoroCore2
-2. CocoroCore2 → MemOS → 記憶検索・LLM推論
-3. CocoroCore2 → SSE レスポンス → CocoroDock
-4. CocoroCore2 → 記憶自動保存 → MemOS
-5. CocoroCore2 → 音声合成要求 → CocoroShell
+1. CocoroDock → POST /chat → CocoroCore2互換API
+2. 互換性レイヤー → session_id→user_id変換
+3. CocoroCore2 → MemOS.chat() → 記憶検索・LLM推論（同期）
+4. 互換性レイヤー → MemOSレスポンス→SSE変換
+5. CocoroCore2 → SSE レスポンス → CocoroDock
+6. MemOS → 記憶自動保存（内部処理）
+7. CocoroCore2 → 音声合成要求 → CocoroShell
 ```
 
 #### 3.3.2 音声対話
@@ -222,32 +244,50 @@ class SpeechToSpeechPipeline:
 
 ### 4.1 外部API（CocoroDock/CocoroShell向け）
 
-#### 4.1.1 チャットエンドポイント
+#### 4.1.1 互換性チャットエンドポイント
 ```http
 POST /chat
 Content-Type: application/json
 Accept: text/event-stream
 
-# リクエスト
+# リクエスト（既存CocoroCore互換）
 {
   "user_id": "hirona",
   "session_id": "session_123",
   "text": "こんにちは",
   "metadata": {
     "image_description": "猫の写真",
-    "image_category": "animal",
+    "image_category": "animal", 
     "image_mood": "cute"
   }
 }
 
-# レスポンス（SSE）
-data: {"type": "content", "content": "こんにちは！", "finished": false}
-data: {"type": "content", "content": "今日はどうされましたか？", "finished": false}
+# レスポンス（SSE - MemOSレスポンスを変換）
+data: {"type": "content", "content": "こんにちは！今日はどうされましたか？", "finished": true}
 data: {"type": "memory", "action": "saved", "details": "会話を記憶しました"}
-data: {"type": "content", "content": "", "finished": true}
+data: [DONE]
 ```
 
-#### 4.1.2 記憶管理エンドポイント
+#### 4.1.2 MemOS純正チャットエンドポイント
+```http
+POST /api/memos/chat
+Content-Type: application/json
+
+# リクエスト（MemOS純正API）
+{
+  "query": "こんにちは",
+  "user_id": "hirona"
+}
+
+# レスポンス（JSON - 非ストリーミング）
+{
+  "code": 200,
+  "message": "Operation successful",
+  "data": "こんにちは！今日はどうされましたか？"
+}
+```
+
+#### 4.1.3 記憶管理エンドポイント
 ```http
 # 記憶検索
 POST /api/memory/search
@@ -269,7 +309,7 @@ POST /api/memory/add
 DELETE /api/memory/{memory_id}?user_id=hirona
 ```
 
-#### 4.1.3 システム制御エンドポイント
+#### 4.1.4 システム制御エンドポイント
 ```http
 # ヘルスチェック
 GET /health
@@ -338,9 +378,9 @@ mos_config = {
 }
 ```
 
-#### 4.2.2 MemOS直接統合
+#### 4.2.2 MemOS直接統合（実際の仕様準拠）
 ```python
-# MemOSを直接統合 - シンプルで強力
+# MemOSを直接統合 - 実際のAPI仕様準拠
 class CocoroCore2App:
     """MemOSを直接活用したCocoroCore2メインアプリケーション"""
     
@@ -349,41 +389,31 @@ class CocoroCore2App:
         self.mos = MOS(config.mos_config)
         self.config = config
         
-    async def chat_request(self, message: str, user_id: str, **context):
-        """チャットリクエスト処理 - MemOS統合チャット"""
+    async def memos_chat(self, query: str, user_id: str, **context):
+        """MemOS純正チャット - 非ストリーミング"""
         
-        # MemOSの統合チャット機能を直接利用
-        # - 自動記憶検索
-        # - LLM推論
-        # - 記憶保存
-        # - 分類・関連付け
-        response = await self.mos.chat(
-            message=message,
-            user_id=user_id,
-            metadata={
-                "timestamp": datetime.now().isoformat(),
-                "character": self.config.character_name,
-                **context
-            }
-        )
+        # MemOSの実際のAPI仕様: chat(query, user_id)
+        # 戻り値: str（完全なレスポンス）
+        response = self.mos.chat(query=query, user_id=user_id)
+        
+        # メタデータは別途記憶管理で追加
+        if context:
+            await self.mos.add(
+                memory_content=f"Context: {json.dumps(context)}",
+                user_id=user_id
+            )
         
         return response
     
-    async def add_memory(self, content: str, user_id: str, **context):
-        """記憶追加 - MemOSが全自動処理"""
-        await self.mos.add(
-            memory_content=content,
-            user_id=user_id,
-            metadata={
-                "timestamp": datetime.now().isoformat(),
-                "character": self.config.character_name,
-                **context
-            }
-        )
+    async def add_memory(self, content: str, user_id: str, **metadata):
+        """記憶追加 - MemOS純正API"""
+        # MemOS実際の仕様: add(memory_content, user_id)
+        self.mos.add(memory_content=content, user_id=user_id)
     
     async def search_memory(self, query: str, user_id: str):
-        """記憶検索 - MemOSの高性能検索エンジン"""
-        return await self.mos.search(query=query, user_id=user_id)
+        """記憶検索 - MemOS純正API"""
+        # MemOS実際の仕様: search(query, user_id)
+        return self.mos.search(query=query, user_id=user_id)
 ```
 
 ---
@@ -436,7 +466,8 @@ class CocoroCore2App:
         self.config = CocoroCore2Config.load(config_path)
         # MemOSを直接統合
         self.mos = MOS(self.config.mos_config)
-        self.session_manager = SessionManager()
+        # セッション管理はuser_idベース（MemOS準拠）
+        self.session_mapping = {}  # session_id -> user_id マッピング
         self.voice_pipeline = SpeechToSpeechPipeline(self.config.sts)
         self.mcp_tools = MCPToolsManager(self.config.mcp)
         
@@ -448,7 +479,7 @@ class CocoroCore2App:
         
     async def shutdown(self):
         """アプリケーション終了処理"""
-        await self.memos_integrator.cleanup()
+        # MemOSは特別なクリーンアップ不要
         await self.voice_pipeline.cleanup()
 ```
 
@@ -463,41 +494,43 @@ class CocoroCore2App:
         self.mos = MOS(config.mos_config)
         self.config = config
         
-    async def handle_chat_request(self, 
-                                 message: str, 
-                                 user_id: str,
-                                 context: Optional[Dict] = None) -> AsyncIterator[str]:
-        """統合チャット処理 - MemOSが全自動管理"""
+    def handle_memos_chat(self, 
+                         query: str, 
+                         user_id: str,
+                         context: Optional[Dict] = None) -> str:
+        """純正MemOSチャット処理（同期）"""
         
-        # MemOSによる記憶統合チャット（ストリーミング対応）
-        async for chunk in self.mos.chat_stream(
-            message=message,
-            user_id=user_id,
-            metadata={
-                "character": self.config.character_name,
-                "timestamp": datetime.now().isoformat(),
-                **(context or {})
-            }
-        ):
-            yield chunk
+        # MemOS純正API: 同期処理、完全なレスポンス返却
+        response = self.mos.chat(query=query, user_id=user_id)
+        
+        # コンテキスト情報を必要に応じて記憶に追加
+        if context:
+            self.mos.add(
+                memory_content=f"Context for query '{query}': {json.dumps(context)}",
+                user_id=user_id
+            )
             
-        # 記憶は自動的に保存・分類・関連付けされる
+        return response
         
-    async def add_contextual_memory(self, content: str, user_id: str, **context):
-        """コンテキスト記憶追加"""
-        await self.mos.add(
-            memory_content=content,
-            user_id=user_id,
-            metadata={
+    def add_contextual_memory(self, content: str, user_id: str, **context):
+        """コンテキスト記憶追加（同期）"""
+        # コンテキストを記憶内容に統合（MemOSはmetadataを直接サポートしない）
+        memory_content = content
+        if context:
+            context_info = {
                 "character": self.config.character_name,
                 "timestamp": datetime.now().isoformat(),
                 **context
             }
-        )
+            memory_content += f" | Context: {json.dumps(context_info)}"
+            
+        # MemOS純正API: 同期処理
+        self.mos.add(memory_content=memory_content, user_id=user_id)
         
-    async def search_user_memories(self, query: str, user_id: str):
-        """ユーザー記憶検索"""
-        return await self.mos.search(query=query, user_id=user_id)
+    def search_user_memories(self, query: str, user_id: str):
+        """ユーザー記憶検索（同期）"""
+        # MemOS純正API: 同期処理
+        return self.mos.search(query=query, user_id=user_id)
 ```
 
 ### 5.3 設定管理
