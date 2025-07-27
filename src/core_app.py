@@ -309,7 +309,7 @@ class CocoroCore2App:
         # ベクトル次元数をembedderモデルから推定
         embedder_model = embedder_config["model_name_or_path"]
         if "text-embedding-3-large" in embedder_model:
-            vector_dimension = 3072
+            vector_dimension = 1536  # text-embedding-3-largeでも1536次元を使用
         elif "text-embedding-3-small" in embedder_model:
             vector_dimension = 1536
         elif "text-embedding-ada-002" in embedder_model:
@@ -417,10 +417,10 @@ class CocoroCore2App:
             from memos.configs.mem_cube import GeneralMemCubeConfig
             from memos.mem_cube.general import GeneralMemCube
             
-            # 設定ファイルからMemCube設定を動的に取得
+            # 設定ファイルからMemCube設定を動的に構築
             cube_config_dict = self._get_memcube_config_from_settings(user_id)
             
-            # GeneralMemCubeConfigを作成
+            # GeneralMemCubeConfigを直接作成
             cube_config = GeneralMemCubeConfig.model_validate(cube_config_dict)
             
             # MemCubeを作成
