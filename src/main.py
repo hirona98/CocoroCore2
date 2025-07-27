@@ -12,10 +12,13 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# モジュールパスを追加（直接実行対応）
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import uvicorn
 
-from .app import app
-from .config import CocoroCore2Config, parse_args, ConfigurationError
+from src.app import app
+from src.config import CocoroCore2Config, parse_args, ConfigurationError
 
 
 # ログ設定
