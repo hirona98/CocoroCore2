@@ -2,16 +2,16 @@
 CocoroCore2 Legacy Adapter
 
 既存CocoroCore APIとの互換性を提供
-MemOS非ストリーミングをSSE変換
 """
 
 import json
 import logging
-from typing import AsyncIterator, Dict, Optional
+from typing import Dict, Optional
 
 from ..core_app import CocoroCore2App
 from ..core.session_manager import SessionManager
-from .models import CoreChatRequest, CoreControlRequest, CoreNotificationRequest, HealthCheckResponse, SseData
+from ..clients.cocoro_dock_client import CocoroDockClient
+from .models import CoreChatRequest, CoreControlRequest, CoreNotificationRequest, HealthCheckResponse
 
 
 class LegacyAPIAdapter:
@@ -27,15 +27,18 @@ class LegacyAPIAdapter:
         self.core_app = core_app
         self.session_manager = session_manager
         self.logger = logging.getLogger(__name__)
+        
+        # CocoroDockクライアント初期化
+        self.dock_client = CocoroDockClient()
     
-    async def handle_legacy_chat(self, request: CoreChatRequest) -> AsyncIterator[str]:
-        """既存/chatエンドポイント処理 - MemOSレスポンスをSSE変換
+    async def handle_legacy_chat_rest(self, request: CoreChatRequest) -> Dict:
+        """既存/chatエンドポイント処理 - RESTレスポンス
         
         Args:
             request: チャットリクエスト
             
-        Yields:
-            str: SSE形式のレスポンス
+        Returns:
+            Dict: JSONレスポンス
         """
         try:
             # session_id -> user_id 変換（設定ファイルのuser_idを優先）
@@ -44,100 +47,86 @@ class LegacyAPIAdapter:
             # セッション管理
             session = self.session_manager.ensure_session(request.session_id, user_id)
             
-            self.logger.debug(f"Processing legacy chat for session {request.session_id}, user {user_id}")
+            self.logger.debug(f"Processing legacy chat REST for session {request.session_id}, user {user_id}")
             
-            # MemOSから通常レスポンス取得（同期処理）
-            try:
-                response = self.core_app.memos_chat(
-                    query=request.text,
-                    user_id=user_id,
-                    context=request.metadata
-                )
-                
-                # レスポンスをチャンクに分割してストリーミング風に送信
-                await self._stream_response_chunks(response, request.session_id, request.context_id)
-                
-                # 記憶保存通知
-                yield self._format_sse_data(SseData(
-                    type="memory",
-                    action="saved",
-                    details="会話を記憶しました",
-                    session_id=request.session_id,
-                    context_id=request.context_id
-                ))
-                
-                # 完了通知
-                yield "data: [DONE]\n\n"
-                
-            except Exception as e:
-                self.logger.error(f"Chat processing failed: {e}")
-                
-                # エラーをSSE形式で送信
-                yield self._format_sse_data(SseData(
-                    type="error",
-                    content=f"処理エラー: {str(e)}",
-                    role="system",
-                    session_id=request.session_id,
-                    context_id=request.context_id
-                ))
-                yield "data: [DONE]\n\n"
+            # コンテキストID生成
+            import uuid
+            context_id = request.context_id or str(uuid.uuid4())
+            
+            # 即座に成功レスポンスを返す（処理開始通知）
+            success_response = {
+                "status": "success",
+                "message": "Chat processing started",
+                "session_id": request.session_id,
+                "context_id": context_id
+            }
+            
+            # バックグラウンドでAI処理を実行
+            import asyncio
+            asyncio.create_task(self._process_chat_async(
+                request=request,
+                user_id=user_id,
+                context_id=context_id
+            ))
+            
+            return success_response
+            
+        except Exception as e:
+            self.logger.error(f"Chat processing initialization failed: {e}")
+            return {
+                "status": "error",
+                "message": f"処理開始エラー: {str(e)}",
+                "session_id": request.session_id,
+                "context_id": request.context_id
+            }
+    
+    async def _process_chat_async(
+        self, 
+        request: CoreChatRequest, 
+        user_id: str, 
+        context_id: str
+    ):
+        """バックグラウンドでチャット処理を実行
+        
+        Args:
+            request: チャットリクエスト
+            user_id: ユーザーID
+            context_id: コンテキストID
+        """
+        try:
+            self.logger.debug(f"Starting background chat processing for session {request.session_id}")
+            
+            # MemOSからレスポンス取得（同期処理）
+            response = self.core_app.memos_chat(
+                query=request.text,
+                user_id=user_id,
+                context=request.metadata
+            )
+            
+            self.logger.debug(f"MemOS response received: {response[:100]}...")
+            
+            # CocoroDockにメッセージ送信
+            success = await self.dock_client.send_chat_message(
+                content=response,
+                role="assistant"
+            )
+            
+            if success:
+                self.logger.info(f"Chat response sent to CocoroDock successfully")
+            else:
+                self.logger.error(f"Failed to send chat response to CocoroDock")
                 
         except Exception as e:
-            self.logger.error(f"Legacy chat handler error: {e}")
-            yield f"data: {{\"type\": \"error\", \"content\": \"システムエラー: {str(e)}\"}}\n\n"
-            yield "data: [DONE]\n\n"
-    
-    async def _stream_response_chunks(self, response: str, session_id: str, context_id: Optional[str]) -> AsyncIterator[str]:
-        """レスポンスをチャンクに分割してストリーミング
-        
-        Args:
-            response: MemOSからのレスポンス
-            session_id: セッションID
-            context_id: コンテキストID
+            self.logger.error(f"Background chat processing failed: {e}")
             
-        Yields:
-            str: SSE形式のチャンク
-        """
-        # レスポンスを適切なサイズに分割
-        chunk_size = 100  # 文字数
-        
-        if len(response) <= chunk_size:
-            # 短いレスポンスはそのまま送信
-            yield self._format_sse_data(SseData(
-                type="content",
-                content=response,
-                role="assistant",
-                session_id=session_id,
-                context_id=context_id,
-                finished=True
-            ))
-        else:
-            # 長いレスポンスは分割して送信
-            for i in range(0, len(response), chunk_size):
-                chunk = response[i:i + chunk_size]
-                is_final = i + chunk_size >= len(response)
-                
-                yield self._format_sse_data(SseData(
-                    type="content",
-                    content=chunk,
-                    role="assistant",
-                    session_id=session_id,
-                    context_id=context_id,
-                    finished=is_final
-                ))
-    
-    def _format_sse_data(self, data: SseData) -> str:
-        """SseDataをSSE形式にフォーマット
-        
-        Args:
-            data: SSEデータ
-            
-        Returns:
-            str: SSE形式の文字列
-        """
-        # Noneフィールドを除去
-        data_dict = {k: v for k, v in data.dict().items() if v is not None}
-        return f"data: {json.dumps(data_dict, ensure_ascii=False)}\n\n"
+            # エラーメッセージをCocoroDockに送信
+            try:
+                await self.dock_client.send_chat_message(
+                    content=f"処理エラー: {str(e)}",
+                    role="assistant"  # systemではなくassistantとして送信
+                )
+            except Exception as send_error:
+                self.logger.error(f"Failed to send error message to CocoroDock: {send_error}")
     
     def _get_user_id_from_session(self, session_id: str, fallback_user_id: str) -> str:
         """セッションIDからユーザーIDを取得
@@ -183,12 +172,8 @@ class LegacyAPIAdapter:
                 metadata=request.metadata
             )
             
-            # チャットメッセージとして処理
-            sse_stream = self.handle_legacy_chat(chat_request)
-            
-            # ストリームを消費（通知は結果を返さない）
-            async for _ in sse_stream:
-                pass
+            # RESTチャットとして処理
+            result = await self.handle_legacy_chat_rest(chat_request)
             
             return {
                 "status": "success",

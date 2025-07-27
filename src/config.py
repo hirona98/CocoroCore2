@@ -172,7 +172,7 @@ def find_config_file(environment: str = "development") -> str:
     # 検索パスのリスト
     search_paths = [
         base_dir.parent / "UserData" / "cocoro_core2_config.json",  # CocoroCore2専用設定（優先）
-        base_dir.parent / "UserData" / "setting.json",  # CocoroAI互換
+        # base_dir.parent / "UserData" / "setting.json",  # CocoroAI互換
         base_dir / "config" / f"{environment}.json",
         base_dir / "config" / "default_memos_config.json",  # フォールバック
     ]

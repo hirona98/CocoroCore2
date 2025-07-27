@@ -47,20 +47,16 @@ async def legacy_chat(
     request: CoreChatRequest,
     adapter: LegacyAPIAdapter = Depends(get_legacy_adapter)
 ):
-    """既存/chatエンドポイント - SSEストリーミング対話"""
+    """既存/chatエンドポイント - 通常のRESTレスポンス"""
     try:
-        return StreamingResponse(
-            adapter.handle_legacy_chat(request),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no"
-            }
-        )
+        logger.debug(f"Received chat request: {request}")
+        return await adapter.handle_legacy_chat_rest(request)
     except Exception as e:
         logger.error(f"Legacy chat endpoint error: {e}")
         raise HTTPException(status_code=500, detail=f"チャット処理エラー: {str(e)}")
+
+
+# SSEテストエンドポイントは削除（RESTに移行のため）
 
 
 @router.get("/health", response_model=HealthCheckResponse)

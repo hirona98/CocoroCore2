@@ -27,7 +27,6 @@ BUILD_CONFIG = {
         "fastapi",
         "uvicorn",
         "uvicorn.workers",
-        "sse_starlette",
         # LLM関連
         "litellm",
         "litellm.utils",
