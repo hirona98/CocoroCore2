@@ -1,4 +1,5 @@
 # CocoroCore2
+.memos/
 
 # PyInstaller
 *.spec
