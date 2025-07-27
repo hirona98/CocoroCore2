@@ -6,7 +6,7 @@ REM Activate virtual environment
 call .\.venv\Scripts\activate
 
 REM Run CocoroCore2 as module
-python -m src.main --environment development
+python -X utf8 -m src.main --environment development
 
 REM Deactivate on exit
 call deactivate
