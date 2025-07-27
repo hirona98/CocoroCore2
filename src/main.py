@@ -198,16 +198,15 @@ def check_environment(config: CocoroCore2Config):
 def print_banner(config: CocoroCore2Config):
     """起動バナーを表示"""
     banner = f"""
-┌─────────────────────────────────────────────────┐
-│                CocoroCore2                      │
-│         MemOS Unified Backend v{config.version:<8}      │
-│                                                 │
-│  Character: {config.character.name:<30}    │
-│  Server:    {config.server.host}:{config.server.port:<25}     │
-│  Memory:    MemOS Integration Enabled          │
-│                                                 │
-│  Ready for CocoroDock & CocoroShell            │
-└─────────────────────────────────────────────────┘
+//////////////////////////////////////////////////////////
+
+                     CocoroCore2
+       CocoroAI Backend Version 2 MemOS Unified
+
+    Ready for CocoroDock & CocoroShell {config.server.host}:{config.server.port:<25}
+  ** ログ出力文字化け防止の為 -X utf8 オプション必須 **
+       
+//////////////////////////////////////////////////////////
 """
     print(banner)
 

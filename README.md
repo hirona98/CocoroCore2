@@ -75,7 +75,7 @@ set OPENAI_API_KEY=your_api_key_here
 .\.venv\Scripts\Activate
 
 # CocoroCore2起動
-python src/main.py --environment development
+python -X utf8 src/main.py --environment development
 ```
 
 ### 本番ビルド・実行
