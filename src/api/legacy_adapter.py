@@ -99,11 +99,17 @@ class LegacyAPIAdapter:
         try:
             self.logger.debug(f"Starting background chat processing for session {request.session_id}")
             
+            # システムプロンプトを取得（リクエストから指定されていればそれを使用）
+            system_prompt = None
+            if request.system_prompt_params and "prompt" in request.system_prompt_params:
+                system_prompt = request.system_prompt_params["prompt"]
+            
             # MemOSからレスポンス取得（同期処理）
             response = self.core_app.memos_chat(
                 query=request.text,
                 user_id=user_id,
-                context=request.metadata
+                context=request.metadata,
+                system_prompt=system_prompt
             )
             
             self.logger.debug(f"MemOS response received: {response[:100]}...")

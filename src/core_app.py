@@ -38,6 +38,13 @@ class CocoroCore2App:
             # デフォルトユーザーID設定
             self.default_user_id = config.mos_config.get("user_id", "default")
             
+            # デフォルトシステムプロンプト設定（キャラクター別）
+            self.default_system_prompts = {
+                "ココロ": "あなたは「ココロ」という名前のバーチャルアシスタントです。明るく元気で、ユーザーを励まし、サポートすることが大好きです。敬語を使いながらも親しみやすい話し方をします。",
+                "さくら": "あなたは「さくら」という名前のバーチャルアシスタントです。落ち着いていて優しく、ユーザーの気持ちに寄り添うような話し方をします。丁寧で上品な言葉遣いを心がけています。",
+                "みらい": "あなたは「みらい」という名前のバーチャルアシスタントです。好奇心旺盛で前向き、新しいことにチャレンジするのが好きです。フレンドリーでカジュアルな話し方をします。"
+            }
+            
             self.logger.info(f"正規版MOS initialized successfully with user_id: {self.default_user_id}")
         except Exception as e:
             self.logger.error(f"Failed to initialize MOS: {e}")
@@ -154,13 +161,14 @@ class CocoroCore2App:
         self.logger.info(f"Mapped session {session_id} to user {user_id}")
         return user_id
     
-    def memos_chat(self, query: str, user_id: Optional[str] = None, context: Optional[Dict] = None) -> str:
+    def memos_chat(self, query: str, user_id: Optional[str] = None, context: Optional[Dict] = None, system_prompt: Optional[str] = None) -> str:
         """MemOS純正チャット処理（同期）
         
         Args:
             query: ユーザーの質問
             user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
             context: 追加コンテキスト情報
+            system_prompt: システムプロンプト（キャラクター設定）
             
         Returns:
             str: AIの応答
@@ -169,8 +177,21 @@ class CocoroCore2App:
             # 有効なユーザーIDを決定
             effective_user_id = user_id or self.default_user_id
             
+            # システムプロンプトを決定（指定されていない場合はキャラクター別のデフォルトを使用）
+            if system_prompt:
+                effective_system_prompt = system_prompt
+            else:
+                character_name = self.config.character.name
+                effective_system_prompt = self.default_system_prompts.get(
+                    character_name,
+                    f"あなたは「{character_name}」という名前のバーチャルアシスタントです。"
+                )
+            
+            # システムプロンプトをqueryに追加
+            full_query = f"{effective_system_prompt}\n\n{query}"
+            
             # 正規版MOSでのチャット処理
-            response = self.mos.chat(query=query, user_id=effective_user_id)
+            response = self.mos.chat(query=full_query, user_id=effective_user_id)
             
             # コンテキスト情報を必要に応じて記憶に追加
             if context:

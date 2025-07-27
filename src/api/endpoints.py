@@ -111,11 +111,17 @@ async def memos_chat(
 ):
     """MemOS純正チャットエンドポイント - 非ストリーミング"""
     try:
+        # システムプロンプトを設定（contextに含まれていれば使用）
+        system_prompt = None
+        if request.context and "system_prompt" in request.context:
+            system_prompt = request.context["system_prompt"]
+        
         # MemOSから直接レスポンス取得
         response = core_app.memos_chat(
             query=request.query,
             user_id=request.user_id,
-            context=request.context
+            context=request.context,
+            system_prompt=system_prompt
         )
         
         return MemOSChatResponse(
