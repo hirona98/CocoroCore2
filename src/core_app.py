@@ -11,11 +11,11 @@ from typing import Any, Dict, Optional
 
 from memos.mem_os.main import MOS
 
-from config import CocoroCore2Config
+from config import CocoroCore2Config, get_mos_config
 
 
 class CocoroCore2App:
-    """MOS.simple()を使用したCocoroCore2メインアプリケーション"""
+    """正規版MOSを使用したCocoroCore2メインアプリケーション"""
     
     def __init__(self, config: CocoroCore2Config):
         """初期化
@@ -26,15 +26,21 @@ class CocoroCore2App:
         self.config = config
         self.logger = logging.getLogger(__name__)
         
-        # MOS.simple()用の環境変数設定
+        # 正規版MOS用の環境変数設定
         self._setup_memos_environment()
         
-        # MOS.simple()で簡単な統合
+        # 正規版MOS初期化
         try:
-            self.mos = MOS.simple()
-            self.logger.info("MOS.simple() initialized successfully")
+            # MOSConfig作成
+            mos_config = get_mos_config(config)
+            self.mos = MOS(mos_config)
+            
+            # デフォルトユーザーID設定
+            self.default_user_id = config.mos_config.get("user_id", "default")
+            
+            self.logger.info(f"正規版MOS initialized successfully with user_id: {self.default_user_id}")
         except Exception as e:
-            self.logger.error(f"Failed to initialize MOS.simple(): {e}")
+            self.logger.error(f"Failed to initialize MOS: {e}")
             raise
         
         # セッション管理（session_id -> user_id マッピング）
@@ -44,10 +50,10 @@ class CocoroCore2App:
         self.is_running = False
         self.startup_time = datetime.now()
         
-        self.logger.info("CocoroCore2App initialized with MOS.simple() integration")
+        self.logger.info("CocoroCore2App initialized with full MOS integration")
     
     def _setup_memos_environment(self):
-        """MOS.simple()用の環境変数を設定する"""
+        """正規版MOS用の環境変数を設定する"""
         try:
             # 設定ファイルからAPIキーを取得
             api_key = self.config.mos_config["chat_model"]["config"]["api_key"]
@@ -72,11 +78,18 @@ class CocoroCore2App:
         try:
             self.logger.info("Starting CocoroCore2App...")
             
-            # MemOSは既に初期化済み（MOS.simple()）
+            # デフォルトユーザーを作成
+            try:
+                self.mos.create_user(user_id=self.default_user_id)
+                self.logger.info(f"Default user created: {self.default_user_id}")
+            except Exception as e:
+                # ユーザーが既に存在する場合はエラーを無視
+                self.logger.info(f"User {self.default_user_id} may already exist: {e}")
+            
             # テスト用のメモリ追加で動作確認
             try:
                 test_content = f"System startup at {datetime.now().isoformat()}"
-                self.mos.add(memory_content=test_content)
+                self.mos.add(memory_content=test_content, user_id=self.default_user_id)
                 self.logger.info("MemOS functionality verified")
             except Exception as e:
                 self.logger.warning(f"MemOS test failed: {e}")
@@ -104,7 +117,7 @@ class CocoroCore2App:
             self.logger.info("Shutting down CocoroCore2App...")
             
             # 各コンポーネントのクリーンアップ
-            # MOS.simple()は特別なクリーンアップ不要
+            # 正規版MOSは特別なクリーンアップ不要
             
             # 音声処理パイプラインのクリーンアップ（将来実装）
             # await self.voice_pipeline.cleanup()
@@ -133,8 +146,7 @@ class CocoroCore2App:
         
         # セッションIDが未登録の場合、デフォルトユーザーIDを使用
         if default_user_id is None:
-            # MemOS設定からdefault user_idを取得
-            default_user_id = self.config.mos_config.get("user_id", "default_user")
+            default_user_id = self.default_user_id
         
         user_id = default_user_id
         self.session_mapping[session_id] = user_id
@@ -147,20 +159,23 @@ class CocoroCore2App:
         
         Args:
             query: ユーザーの質問
-            user_id: ユーザーID（MOS.simple()では無視される）
+            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
             context: 追加コンテキスト情報
             
         Returns:
             str: AIの応答
         """
         try:
-            # MOS.simple()は単一ユーザーモードなので、user_idは使用しない
-            response = self.mos.chat(query=query)
+            # 有効なユーザーIDを決定
+            effective_user_id = user_id or self.default_user_id
+            
+            # 正規版MOSでのチャット処理
+            response = self.mos.chat(query=query, user_id=effective_user_id)
             
             # コンテキスト情報を必要に応じて記憶に追加
             if context:
                 context_content = f"Context for query '{query}': {context}"
-                self.add_memory(content=context_content)
+                self.add_memory(content=context_content, user_id=effective_user_id)
             
             self.logger.debug(f"Chat response: {len(response)} characters")
             return response
@@ -174,10 +189,13 @@ class CocoroCore2App:
         
         Args:
             content: 記憶内容
-            user_id: ユーザーID（MOS.simple()では無視される）
+            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
             **context: 追加コンテキスト情報
         """
         try:
+            # 有効なユーザーIDを決定
+            effective_user_id = user_id or self.default_user_id
+            
             # コンテキスト情報を本文に含める
             memory_content = content
             if context:
@@ -189,8 +207,8 @@ class CocoroCore2App:
                 }
                 memory_content += f" | Context: {json.dumps(context_info)}"
             
-            # MOS.simple()APIで記憶追加
-            self.mos.add(memory_content=memory_content)
+            # 正規版MOSAPIで記憶追加
+            self.mos.add(memory_content=memory_content, user_id=effective_user_id)
             self.logger.debug(f"Memory added: {len(content)} characters")
             
         except Exception as e:
@@ -203,14 +221,17 @@ class CocoroCore2App:
         
         Args:
             query: 検索クエリ
-            user_id: ユーザーID（MOS.simple()では無視される）
+            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
             
         Returns:
             Dict[str, Any]: 検索結果
         """
         try:
-            # MOS.simple()APIで検索
-            result = self.mos.search(query=query)
+            # 有効なユーザーIDを決定
+            effective_user_id = user_id or self.default_user_id
+            
+            # 正規版MOSAPIで検索
+            result = self.mos.search(query=query, user_id=effective_user_id)
             
             self.logger.debug(f"Memory search completed: {len(str(result))} characters")
             return result
@@ -223,14 +244,17 @@ class CocoroCore2App:
         """ユーザーの全記憶を取得
         
         Args:
-            user_id: ユーザーID（MOS.simple()では無視される）
+            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
             
         Returns:
             Dict[str, Any]: 全記憶データ
         """
         try:
-            # MOS.simple()APIで全記憶取得
-            result = self.mos.get_all()
+            # 有効なユーザーIDを決定
+            effective_user_id = user_id or self.default_user_id
+            
+            # 正規版MOSAPIで全記憶取得
+            result = self.mos.get_all(user_id=effective_user_id)
             
             self.logger.debug("Retrieved all memories")
             return result
@@ -238,6 +262,148 @@ class CocoroCore2App:
         except Exception as e:
             self.logger.error(f"Failed to get memories: {e}")
             raise
+    
+    def ensure_user(self, user_id: str) -> None:
+        """ユーザーの存在を確保（存在しない場合は作成）
+        
+        Args:
+            user_id: ユーザーID
+        """
+        try:
+            # ユーザーが既に存在するかチェック
+            users = self.mos.list_users()
+            user_exists = False
+            for user in users:
+                if user.get("user_id") == user_id:
+                    user_exists = True
+                    self.logger.debug(f"User {user_id} already exists")
+                    break
+            
+            # ユーザーが存在しない場合は作成
+            if not user_exists:
+                self.mos.create_user(user_id=user_id)
+                self.logger.info(f"Created new user: {user_id}")
+            
+            # MemCubeの確認と作成
+            self._ensure_user_memcube(user_id)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to ensure user {user_id}: {e}")
+            # ユーザー作成の失敗は致命的ではないので、警告ログのみ
+    
+    def _ensure_user_memcube(self, user_id: str) -> None:
+        """ユーザーのMemCubeの存在を確保
+        
+        Args:
+            user_id: ユーザーID
+        """
+        try:
+            # ユーザーの既存MemCubeをチェック
+            user_cubes = self.mos.user_manager.get_user_cubes(user_id=user_id)
+            
+            if user_cubes and len(user_cubes) > 0:
+                self.logger.debug(f"User {user_id} already has {len(user_cubes)} MemCube(s)")
+                
+                # 既存のMemCubeがMOSに登録されているか確認
+                all_cubes_registered = True
+                for cube in user_cubes:
+                    cube_id = cube.cube_id
+                    if cube_id not in self.mos.mem_cubes:
+                        self.logger.info(f"Re-registering existing MemCube {cube_id} for user {user_id}")
+                        try:
+                            # MemCubeをファイルから読み込んで再登録
+                            from memos.mem_cube.general import GeneralMemCube
+                            import os
+                            cube_path = f".memos/user_cubes/{cube_id}"
+                            if os.path.exists(cube_path):
+                                self.mos.register_mem_cube(cube_path, user_id=user_id)
+                                self.logger.info(f"Successfully re-registered MemCube {cube_id}")
+                            else:
+                                self.logger.warning(f"MemCube path not found: {cube_path}, will create new MemCube")
+                                all_cubes_registered = False
+                                break
+                        except Exception as e:
+                            self.logger.error(f"Failed to re-register MemCube {cube_id}: {e}")
+                            all_cubes_registered = False
+                            break
+                    else:
+                        self.logger.debug(f"MemCube {cube_id} is already registered in MOS")
+                
+                # 全てのMemCubeが正しく登録されている場合は終了
+                if all_cubes_registered:
+                    return
+                
+                # 登録に失敗したMemCubeがある場合は新しく作成
+                self.logger.info(f"Creating new MemCube for user {user_id} due to registration failures")
+            
+            # デフォルトMemCubeを作成
+            from memos.configs.mem_cube import GeneralMemCubeConfig
+            from memos.mem_cube.general import GeneralMemCube
+            
+            # 正しい設定形式でMemCube設定を直接作成
+            cube_config_dict = {
+                "user_id": user_id,
+                "cube_id": f"{user_id}_default_cube",
+                "text_mem": {
+                    "backend": "general_text",
+                    "config": {
+                        "cube_id": f"{user_id}_default_cube",
+                        "memory_filename": "textual_memory.json",
+                        "extractor_llm": {
+                            "backend": "openai",
+                            "config": {
+                                "model_name_or_path": "gpt-4o-mini",
+                                "temperature": 0.0,
+                                "api_key": self.config.mos_config["chat_model"]["config"]["api_key"],
+                                "api_base": "https://api.openai.com/v1"
+                            }
+                        },
+                        "embedder": {
+                            "backend": "universal_api",
+                            "config": {
+                                "model_name_or_path": "text-embedding-3-small",
+                                "provider": "openai",
+                                "api_key": self.config.mos_config["chat_model"]["config"]["api_key"],
+                                "base_url": "https://api.openai.com/v1"
+                            }
+                        },
+                        "vector_db": {
+                            "backend": "qdrant",
+                            "config": {
+                                "collection_name": f"{user_id}_collection",
+                                "path": ".memos/qdrant",
+                                "distance_metric": "cosine",
+                                "vector_dimension": 1536
+                            }
+                        }
+                    }
+                },
+                "act_mem": {},
+                "para_mem": {}
+            }
+            
+            # GeneralMemCubeConfigを直接作成
+            cube_config = GeneralMemCubeConfig.model_validate(cube_config_dict)
+            
+            # MemCubeを作成
+            mem_cube = GeneralMemCube(cube_config)
+            self.logger.info(f"Created MemCube with config cube_id: {cube_config.cube_id}")
+            self.logger.info(f"Created MemCube actual cube_id: {mem_cube.config.cube_id}")
+            
+            # MOSにMemCubeを直接登録
+            self.mos.register_mem_cube(mem_cube, user_id=user_id)
+            
+            # 登録後のMemCube確認
+            registered_cubes = self.mos.user_manager.get_user_cubes(user_id)
+            self.logger.info(f"Registered cubes for user {user_id}: {[cube.cube_id for cube in registered_cubes]}")
+            
+            self.logger.info(f"Created and registered default MemCube for user: {user_id}")
+            
+        except Exception as e:
+            import traceback
+            self.logger.error(f"Failed to ensure MemCube for user {user_id}: {e}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            # MemCube作成の失敗は警告ログのみ
     
     def get_app_status(self) -> Dict[str, Any]:
         """アプリケーション状態を取得
@@ -254,12 +420,13 @@ class CocoroCore2App:
                 "version": self.config.version,
                 "character": self.config.character.name,
                 "memory_enabled": True,
-                "memory_type": "MemOS.simple()",
+                "memory_type": "MemOS Full",
                 "startup_time": self.startup_time.isoformat(),
                 "active_sessions": active_sessions,
                 "memos_status": {
-                    "type": "simple",
-                    "backend": "general_text + qdrant_local",
+                    "type": "full",
+                    "backend": "configurable",
+                    "default_user_id": self.default_user_id,
                     "sessions": active_sessions,
                 },
                 "features": {

@@ -14,6 +14,9 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
+# MemOS関連インポート（遅延インポートで対応）
+# from memos.configs.mem_os import MOSConfig
+
 
 class ServerConfig(BaseModel):
     """FastAPIサーバー設定"""
@@ -290,3 +293,71 @@ def load_legacy_config(config_dir: Optional[str] = None) -> Dict[str, Any]:
         config_data = json.load(f)
     
     return substitute_env_variables(config_data)
+
+
+def create_mos_config_from_dict(mos_config_dict: Dict[str, Any]):
+    """辞書からMOSConfigオブジェクトを作成する
+    
+    Args:
+        mos_config_dict: MemOS設定辞書
+        
+    Returns:
+        MOSConfig: MOSConfigオブジェクト
+        
+    Raises:
+        ConfigurationError: MOSConfig作成に失敗した場合
+    """
+    try:
+        # 遅延インポートでMemOSの循環依存を回避
+        from memos.configs.mem_os import MOSConfig
+        
+        # 辞書からMOSConfigオブジェクトを作成
+        return MOSConfig(**mos_config_dict)
+        
+    except ImportError as e:
+        raise ConfigurationError(f"MemOSライブラリが利用できません: {e}")
+    except Exception as e:
+        raise ConfigurationError(f"MOSConfig作成に失敗しました: {e}")
+
+
+def load_mos_config_from_file(config_path: str):
+    """ファイルからMOSConfigオブジェクトを作成する
+    
+    Args:
+        config_path: 設定ファイルパス
+        
+    Returns:
+        MOSConfig: MOSConfigオブジェクト
+        
+    Raises:
+        ConfigurationError: 設定ファイル読み込みまたはMOSConfig作成に失敗した場合
+    """
+    try:
+        # 遅延インポートでMemOSの循環依存を回避
+        from memos.configs.mem_os import MOSConfig
+        
+        # ファイルから直接MOSConfigオブジェクトを作成
+        return MOSConfig.from_json_file(config_path)
+        
+    except ImportError as e:
+        raise ConfigurationError(f"MemOSライブラリが利用できません: {e}")
+    except Exception as e:
+        raise ConfigurationError(f"MOSConfig読み込みに失敗しました: {e}")
+
+
+def get_mos_config(config: "CocoroCore2Config"):
+    """CocoroCore2ConfigからMOSConfigオブジェクトを取得する
+    
+    Args:
+        config: CocoroCore2設定オブジェクト
+        
+    Returns:
+        MOSConfig: MOSConfigオブジェクト
+        
+    Raises:
+        ConfigurationError: MOSConfig作成に失敗した場合
+    """
+    if not config.mos_config:
+        raise ConfigurationError("MemOS設定が見つかりません")
+    
+    return create_mos_config_from_dict(config.mos_config)

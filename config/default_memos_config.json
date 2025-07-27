@@ -1,12 +1,13 @@
 {
-  "user_id": "root",
+  "user_id": "user",
   "chat_model": {
     "backend": "openai",
     "config": {
-      "model_name_or_path": "claude-3-5-sonnet-latest",
+      "model_name_or_path": "gpt-4o-mini",
       "temperature": 0.7,
       "max_tokens": 4096,
-      "api_key": "${OPENAI_API_KEY}"
+      "api_key": "${OPENAI_API_KEY}",
+      "api_base": "https://api.openai.com/v1"
     }
   },
   "mem_reader": {
@@ -17,14 +18,16 @@
         "config": {
           "model_name_or_path": "gpt-4o-mini",
           "temperature": 0.0,
-          "api_key": "${OPENAI_API_KEY}"
+          "api_key": "${OPENAI_API_KEY}",
+          "api_base": "https://api.openai.com/v1"
         }
       },
       "embedder": {
         "backend": "openai",
         "config": {
           "model_name_or_path": "text-embedding-3-small",
-          "api_key": "${OPENAI_API_KEY}"
+          "api_key": "${OPENAI_API_KEY}",
+          "api_base": "https://api.openai.com/v1"
         }
       },
       "chunker": {

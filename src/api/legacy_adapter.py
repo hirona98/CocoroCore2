@@ -41,8 +41,11 @@ class LegacyAPIAdapter:
             Dict: JSONレスポンス
         """
         try:
-            # session_id -> user_id 変換（設定ファイルのuser_idを優先）
-            user_id = self._get_user_id_from_session(request.session_id, None)
+            # session_id -> user_id 変換（CocoroDockから送信されるuser_idをそのまま使用）
+            user_id = self._get_user_id_from_session(request.session_id, request.user_id)
+            
+            # ユーザーの存在を確保
+            self.core_app.ensure_user(user_id)
             
             # セッション管理
             session = self.session_manager.ensure_session(request.session_id, user_id)
@@ -146,10 +149,8 @@ class LegacyAPIAdapter:
         
         # セッションが存在しない場合はフォールバック
         if not fallback_user_id:
-            # MemOS設定からdefault user_idを取得
-            fallback_user_id = self.core_app.config.mos_config.get("user_id")
-            if not fallback_user_id:
-                raise ValueError("MemOS設定にuser_idが指定されていません")
+            # フォールバックuser_idが指定されていない場合はエラー
+            raise ValueError("フォールバックuser_idが指定されていません")
         return fallback_user_id
     
     async def handle_legacy_notification(self, request: CoreNotificationRequest) -> Dict:
