@@ -45,7 +45,7 @@ set OPENAI_API_KEY=your_api_key_here
 
 ### 3. 設定ファイル
 
-`config/development.json` を編集して環境に合わせて設定を調整：
+`../UserData/cocoro_core2_config.json` を編集して環境に合わせて設定を調整：
 
 ```json
 {
@@ -129,7 +129,7 @@ start_cocoro_core2.bat
 
 - CocoroDock: **完全互換** - 変更不要
 - CocoroShell: **完全互換** - 変更不要  
-- 設定ファイル: 部分互換 - `setting.json` の一部設定を継承
+- 設定ファイル: `../UserData/cocoro_core2_config.json` を使用（既存 `setting.json` も互換）
 
 ## 📁 ディレクトリ構成
 
@@ -172,11 +172,11 @@ CocoroCore2/
    ```
 
 3. **MemOS初期化エラー**
-   - `config/default_memos_config.json` の設定を確認
+   - `../UserData/cocoro_core2_config.json` の設定を確認
    - API キーが正しく設定されているか確認
 
 4. **ポート55601が使用中**
-   - `config/development.json` の `server.port` を変更
+   - `../UserData/cocoro_core2_config.json` の `server.port` を変更
 
 ### ログ確認
 
