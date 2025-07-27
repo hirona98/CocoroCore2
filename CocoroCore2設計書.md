@@ -451,13 +451,15 @@ CocoroCore2/
 │       ├── shell_client.py        # CocoroShell通信
 │       └── logging.py             # ログ管理
 ├── config/
-│   ├── default_memos_config.json  # デフォルトMemOS設定
-│   └── development.json           # 開発環境設定
+│   └── default_memos_config.json  # デフォルトMemOS設定
 ├── tests/                         # テストコード
 ├── requirements.txt               # 依存関係
 ├── pyproject.toml                # プロジェクト設定
 ├── build.bat                     # ビルドスクリプト
 └── README.md                     # ドキュメント
+
+UserData/
+└── cocoro_core2_config.json      # 開発環境設定
 ```
 
 ### 5.2 主要クラス設計

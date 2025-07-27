@@ -29,7 +29,7 @@ class CocoroCore2App:
         self.logger = logging.getLogger(__name__)
         
         # MemOSを直接統合
-        mos_config = MOSConfig.from_dict(config.mos_config)
+        mos_config = MOSConfig(**config.mos_config)
         self.mos = MOS(mos_config)
         
         # セッション管理（session_id -> user_id マッピング）

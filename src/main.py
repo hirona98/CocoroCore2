@@ -86,6 +86,41 @@ def setup_signal_handlers():
         signal.signal(signal.SIGBREAK, signal_handler)
 
 
+def setup_api_keys_from_config(config: CocoroCore2Config):
+    """設定ファイルからAPIキーを環境変数に設定"""
+    try:
+        # mos_config から OpenAI APIキーを取得
+        mos_config = config.mos_config
+        
+        # chat_model の APIキー
+        chat_model_config = mos_config.get("chat_model", {}).get("config", {})
+        chat_api_key = chat_model_config.get("api_key", "")
+        
+        if chat_api_key and chat_api_key.startswith("sk-"):
+            os.environ["OPENAI_API_KEY"] = chat_api_key
+            return True
+        
+        # mem_reader の LLM APIキー
+        mem_reader_llm_config = mos_config.get("mem_reader", {}).get("config", {}).get("llm", {}).get("config", {})
+        mem_llm_api_key = mem_reader_llm_config.get("api_key", "")
+        
+        if mem_llm_api_key and mem_llm_api_key.startswith("sk-"):
+            os.environ["OPENAI_API_KEY"] = mem_llm_api_key
+            return True
+        
+        # speech.stt の APIキー
+        speech_stt_config = config.speech.stt
+        if hasattr(speech_stt_config, 'api_key') and speech_stt_config.api_key:
+            if speech_stt_config.api_key.startswith("sk-"):
+                os.environ["OPENAI_API_KEY"] = speech_stt_config.api_key
+                return True
+        
+    except Exception as e:
+        pass
+    
+    return False
+
+
 async def run_server(config: CocoroCore2Config):
     """FastAPIサーバーを起動"""
     logger = logging.getLogger(__name__)
@@ -141,7 +176,7 @@ async def run_server(config: CocoroCore2Config):
         logger.info("CocoroCore2 server stopped")
 
 
-def check_environment():
+def check_environment(config: CocoroCore2Config):
     """実行環境をチェック"""
     logger = logging.getLogger(__name__)
     
@@ -150,17 +185,11 @@ def check_environment():
         logger.error("Python 3.10以上が必要です")
         sys.exit(1)
     
-    # 必要な環境変数チェック
-    required_env_vars = ["OPENAI_API_KEY"]
-    missing_vars = []
-    
-    for var in required_env_vars:
-        if not os.environ.get(var):
-            missing_vars.append(var)
-    
-    if missing_vars:
-        logger.warning(f"以下の環境変数が設定されていません: {', '.join(missing_vars)}")
-        logger.warning("MemOSの機能が制限される可能性があります")
+    # 設定ファイルからAPIキーを設定
+    if setup_api_keys_from_config(config):
+        logger.info("設定ファイルからAPIキーを設定しました")
+    else:
+        logger.warning("設定ファイルにOpenAI APIキーが見つかりませんでした")
     
     logger.info(f"Python {sys.version}")
     logger.info(f"Working directory: {os.getcwd()}")
@@ -193,8 +222,12 @@ async def main():
         try:
             if args.config_file:
                 config = CocoroCore2Config.load(args.config_file, args.environment)
+                print(f"設定ファイル読み込み: {args.config_file}")
             else:
                 config = CocoroCore2Config.load(environment=args.environment)
+                from src.config import find_config_file
+                config_path = find_config_file(args.environment)
+                print(f"設定ファイル読み込み: {config_path}")
         except ConfigurationError as e:
             print(f"設定エラー: {e}")
             sys.exit(1)
@@ -204,7 +237,7 @@ async def main():
         logger = logging.getLogger(__name__)
         
         # 環境チェック
-        check_environment()
+        check_environment(config)
         
         # 起動バナー表示
         print_banner(config)

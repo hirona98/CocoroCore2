@@ -7,7 +7,7 @@ CocoroCore2 Session Manager
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Optional, Set
+from typing import Dict, List, Optional, Set
 
 from ..config import SessionConfig
 

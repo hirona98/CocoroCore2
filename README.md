@@ -148,13 +148,15 @@ CocoroCore2/
 │       ├── models.py      # データモデル
 │       └── legacy_adapter.py   # 互換性レイヤー
 ├── config/                # 設定ファイル
-│   ├── development.json   # 開発環境設定
-│   └── default_memos_config.json  # MemOS設定
+│   └── default_memos_config.json  # MemOSデフォルト設定
 ├── tests/                 # テストコード
 ├── requirements.txt       # 依存関係
 ├── pyproject.toml        # プロジェクト設定
 ├── build.bat             # ビルドスクリプト
 └── README.md             # このファイル
+
+UserData/
+└── cocoro_core2_config.json      # 開発環境設定
 ```
 
 ## 🐛 トラブルシューティング
