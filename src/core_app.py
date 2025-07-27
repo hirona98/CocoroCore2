@@ -291,6 +291,83 @@ class CocoroCore2App:
             self.logger.error(f"Failed to ensure user {user_id}: {e}")
             # ユーザー作成の失敗は致命的ではないので、警告ログのみ
     
+    def _get_memcube_config_from_settings(self, user_id: str) -> dict:
+        """設定ファイルからMemCube設定を動的に構築
+        
+        Args:
+            user_id: ユーザーID
+            
+        Returns:
+            dict: MemCube設定辞書
+        """
+        # 設定ファイルから必要な値を取得
+        mos_config = self.config.mos_config
+        chat_model_config = mos_config["chat_model"]["config"]
+        mem_reader_config = mos_config["mem_reader"]["config"]
+        embedder_config = mem_reader_config["embedder"]["config"]
+        
+        # ベクトル次元数をembedderモデルから推定
+        embedder_model = embedder_config["model_name_or_path"]
+        if "text-embedding-3-large" in embedder_model:
+            vector_dimension = 3072
+        elif "text-embedding-3-small" in embedder_model:
+            vector_dimension = 1536
+        elif "text-embedding-ada-002" in embedder_model:
+            vector_dimension = 1536
+        else:
+            # デフォルト値
+            vector_dimension = 1536
+            self.logger.warning(f"Unknown embedder model {embedder_model}, using default dimension {vector_dimension}")
+        
+        # MemCube設定を構築
+        cube_config = {
+            "user_id": user_id,
+            "cube_id": f"{user_id}_default_cube",
+            "text_mem": {
+                "backend": "general_text",
+                "config": {
+                    "cube_id": f"{user_id}_default_cube",
+                    "memory_filename": "textual_memory.json",
+                    "extractor_llm": {
+                        "backend": mos_config["chat_model"]["backend"],
+                        "config": {
+                            "model_name_or_path": chat_model_config["model_name_or_path"],
+                            "temperature": 0.0,  # Memory用は固定値
+                            "api_key": chat_model_config["api_key"],
+                            "api_base": chat_model_config.get("api_base", "https://api.openai.com/v1")
+                        }
+                    },
+                    "embedder": {
+                        "backend": mem_reader_config["embedder"]["backend"],
+                        "config": {
+                            "model_name_or_path": embedder_config["model_name_or_path"],
+                            "provider": embedder_config.get("provider", "openai"),
+                            "api_key": embedder_config["api_key"],
+                            "base_url": embedder_config.get("base_url", "https://api.openai.com/v1")
+                        }
+                    },
+                    "vector_db": {
+                        "backend": "qdrant",
+                        "config": {
+                            "collection_name": f"{user_id}_collection",
+                            "path": ".memos/qdrant",
+                            "distance_metric": "cosine",
+                            "vector_dimension": vector_dimension
+                        }
+                    }
+                }
+            },
+            "act_mem": {},
+            "para_mem": {}
+        }
+        
+        self.logger.debug(f"Generated MemCube config for user {user_id}")
+        self.logger.debug(f"  - Embedder model: {embedder_config['model_name_or_path']}")
+        self.logger.debug(f"  - Vector dimension: {vector_dimension}")
+        self.logger.debug(f"  - Chat model: {chat_model_config['model_name_or_path']}")
+        
+        return cube_config
+
     def _ensure_user_memcube(self, user_id: str) -> None:
         """ユーザーのMemCubeの存在を確保
         
@@ -340,49 +417,10 @@ class CocoroCore2App:
             from memos.configs.mem_cube import GeneralMemCubeConfig
             from memos.mem_cube.general import GeneralMemCube
             
-            # 正しい設定形式でMemCube設定を直接作成
-            cube_config_dict = {
-                "user_id": user_id,
-                "cube_id": f"{user_id}_default_cube",
-                "text_mem": {
-                    "backend": "general_text",
-                    "config": {
-                        "cube_id": f"{user_id}_default_cube",
-                        "memory_filename": "textual_memory.json",
-                        "extractor_llm": {
-                            "backend": "openai",
-                            "config": {
-                                "model_name_or_path": "gpt-4o-mini",
-                                "temperature": 0.0,
-                                "api_key": self.config.mos_config["chat_model"]["config"]["api_key"],
-                                "api_base": "https://api.openai.com/v1"
-                            }
-                        },
-                        "embedder": {
-                            "backend": "universal_api",
-                            "config": {
-                                "model_name_or_path": "text-embedding-3-small",
-                                "provider": "openai",
-                                "api_key": self.config.mos_config["chat_model"]["config"]["api_key"],
-                                "base_url": "https://api.openai.com/v1"
-                            }
-                        },
-                        "vector_db": {
-                            "backend": "qdrant",
-                            "config": {
-                                "collection_name": f"{user_id}_collection",
-                                "path": ".memos/qdrant",
-                                "distance_metric": "cosine",
-                                "vector_dimension": 1536
-                            }
-                        }
-                    }
-                },
-                "act_mem": {},
-                "para_mem": {}
-            }
+            # 設定ファイルからMemCube設定を動的に取得
+            cube_config_dict = self._get_memcube_config_from_settings(user_id)
             
-            # GeneralMemCubeConfigを直接作成
+            # GeneralMemCubeConfigを作成
             cube_config = GeneralMemCubeConfig.model_validate(cube_config_dict)
             
             # MemCubeを作成
