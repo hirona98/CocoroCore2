@@ -101,12 +101,16 @@
     "cleanup_interval_seconds": 30
   },
   "neo4j": {
-    "uri": "bolt://localhost:7687",
+    "uri": "bolt://127.0.0.1:7687",
     "user": "neo4j",
     "password": "${NEO4J_PASSWORD}",
     "db_name": "cocoro_core2_tree_memory",
     "auto_create": true,
-    "embedding_dimension": 3072
+    "embedding_dimension": 3072,
+    "embedded_enabled": true,
+    "java_home": "jre",
+    "neo4j_home": "neo4j",
+    "startup_timeout": 60
   },
   "mem_scheduler": {
     "enabled": true,

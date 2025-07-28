@@ -13,6 +13,7 @@ from memos.mem_os.main import MOS
 from config import CocoroCore2Config, get_mos_config
 from .core.text_memory_scheduler import TextMemorySchedulerManager
 from .core.optimization_scheduler import OptimizationScheduler
+from .core.neo4j_manager import Neo4jManager
 
 
 class CocoroCore2App:
@@ -61,6 +62,29 @@ class CocoroCore2App:
         # テキストメモリスケジューラー初期化
         self.text_memory_scheduler: Optional[TextMemorySchedulerManager] = None
         self.optimization_scheduler: Optional[OptimizationScheduler] = None
+        
+        # Neo4j組み込みサービス管理
+        self.neo4j_manager: Optional[Neo4jManager] = None
+        if config.neo4j.embedded_enabled:
+            try:
+                neo4j_config = {
+                    "uri": config.neo4j.uri,
+                    "user": config.neo4j.user,
+                    "password": config.neo4j.password,
+                    "db_name": config.neo4j.db_name,
+                    "auto_create": config.neo4j.auto_create,
+                    "embedded_enabled": config.neo4j.embedded_enabled,
+                    "java_home": config.neo4j.java_home,
+                    "neo4j_home": config.neo4j.neo4j_home,
+                    "startup_timeout": config.neo4j.startup_timeout
+                }
+                self.neo4j_manager = Neo4jManager(neo4j_config)
+                self.logger.info("Neo4j manager created for embedded mode")
+            except Exception as e:
+                self.logger.error(f"Failed to create Neo4j manager: {e}")
+                self.neo4j_manager = None
+        else:
+            self.logger.info("Embedded Neo4j is disabled, expecting external Neo4j instance")
         
         if config.mem_scheduler.enabled:
             try:
@@ -230,6 +254,23 @@ class CocoroCore2App:
         try:
             self.logger.info("Starting CocoroCore2App...")
             
+            # Neo4j組み込みサービス起動（MOSより前に起動）
+            if self.neo4j_manager:
+                self.logger.info("Starting embedded Neo4j service...")
+                try:
+                    neo4j_started = await self.neo4j_manager.start()
+                    if neo4j_started:
+                        self.logger.info("Embedded Neo4j service started successfully")
+                    else:
+                        self.logger.error("Failed to start embedded Neo4j service")
+                        # Neo4j起動失敗は致命的エラーとして扱う（TreeTextMemoryに必要）
+                        raise RuntimeError("Neo4j startup failed - required for TreeTextMemory")
+                except Exception as e:
+                    self.logger.error(f"Neo4j startup error: {e}")
+                    raise
+            else:
+                self.logger.info("Embedded Neo4j is disabled - expecting external Neo4j")
+            
             # デフォルトユーザーを作成
             try:
                 self.mos.create_user(user_id=self.default_user_id)
@@ -326,6 +367,15 @@ class CocoroCore2App:
             
             # MCP統合のクリーンアップ（将来実装）
             # await self.mcp_tools.cleanup()
+            
+            # Neo4j組み込みサービス停止
+            if self.neo4j_manager:
+                try:
+                    self.logger.info("Stopping embedded Neo4j service...")
+                    await self.neo4j_manager.stop()
+                    self.logger.info("Embedded Neo4j service stopped")
+                except Exception as e:
+                    self.logger.error(f"Failed to stop Neo4j service: {e}")
             
             self.is_running = False
             self.logger.info("CocoroCore2App shutdown completed")

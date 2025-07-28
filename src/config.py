@@ -66,6 +66,12 @@ class Neo4jConfig(BaseModel):
     auto_create: bool = True
     embedding_dimension: int = 3072  # text-embedding-3-large
     
+    # 組み込みNeo4j設定
+    embedded_enabled: bool = True  # PyInstaller実行時の組み込みモード
+    java_home: str = "jre"  # JREディレクトリ（相対パス）
+    neo4j_home: str = "neo4j"  # Neo4jディレクトリ（相対パス）
+    startup_timeout: int = 60  # 起動タイムアウト（秒）
+    
     @validator('password')
     def validate_password(cls, v):
         """パスワード検証"""
@@ -79,6 +85,15 @@ class Neo4jConfig(BaseModel):
             logging.getLogger(__name__).warning(
                 "Using default Neo4j password. Please set NEO4J_PASSWORD environment variable."
             )
+        return v
+    
+    @validator('startup_timeout')
+    def validate_startup_timeout(cls, v):
+        """起動タイムアウト検証"""
+        if v < 10:
+            raise ValueError("startup_timeout must be at least 10 seconds")
+        if v > 300:
+            raise ValueError("startup_timeout must not exceed 300 seconds")
         return v
 
 
