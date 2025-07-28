@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 from memos.mem_os.main import MOS
 
 from config import CocoroCore2Config, get_mos_config
+from .core.text_memory_scheduler import TextMemorySchedulerManager
 
 
 class CocoroCore2App:
@@ -56,6 +57,19 @@ class CocoroCore2App:
         self.is_running = False
         self.startup_time = datetime.now()
         
+        # テキストメモリスケジューラー初期化
+        self.text_memory_scheduler: Optional[TextMemorySchedulerManager] = None
+        if config.mem_scheduler.enabled:
+            try:
+                self.text_memory_scheduler = TextMemorySchedulerManager(config)
+                self.logger.info("Text memory scheduler manager created")
+            except Exception as e:
+                self.logger.error(f"Failed to create text memory scheduler manager: {e}")
+                # スケジューラーエラーはアプリケーション全体を停止させない
+                self.text_memory_scheduler = None
+        else:
+            self.logger.info("Text memory scheduler is disabled in configuration")
+        
         self.logger.info("CocoroCore2App initialized with full MOS integration")
     
     def _setup_memos_environment(self):
@@ -78,6 +92,34 @@ class CocoroCore2App:
         except Exception as e:
             self.logger.error(f"Failed to setup MemOS environment: {e}")
             raise
+    
+    def _get_chat_llm_from_mos(self):
+        """MOSからchat_llmインスタンスを取得
+        
+        Returns:
+            BaseLLM: チャット用LLMインスタンス
+            
+        Raises:
+            RuntimeError: LLMインスタンスの取得に失敗した場合
+        """
+        try:
+            # MOSのchat_llmを直接取得
+            if hasattr(self.mos, 'chat_llm') and self.mos.chat_llm is not None:
+                self.logger.debug("Retrieved chat_llm from MOS instance")
+                return self.mos.chat_llm
+            else:
+                # フォールバック: MOSConfigから新しいLLMインスタンスを作成
+                self.logger.warning("chat_llm not found in MOS, creating from config")
+                from memos.llms.factory import LLMFactory
+                from memos.configs.llm import LLMConfigFactory
+                
+                chat_model_config = self.config.mos_config["chat_model"]
+                llm_config_factory = LLMConfigFactory(**chat_model_config)
+                return LLMFactory.from_config(llm_config_factory)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get chat LLM from MOS: {e}")
+            raise RuntimeError(f"MOSからLLMインスタンスの取得に失敗しました: {e}")
     
     async def startup(self):
         """アプリケーション起動処理"""
@@ -110,6 +152,22 @@ class CocoroCore2App:
                 self.logger.info("MCP integration is enabled")
                 # await self.mcp_tools.initialize()
             
+            # テキストメモリスケジューラー初期化・開始
+            if self.text_memory_scheduler:
+                try:
+                    self.logger.info("Initializing text memory scheduler...")
+                    
+                    # chat_llmを取得（MOSから）
+                    chat_llm = self._get_chat_llm_from_mos()
+                    self.text_memory_scheduler.initialize(chat_llm)
+                    await self.text_memory_scheduler.start()
+                    
+                    self.logger.info("Text memory scheduler started successfully")
+                except Exception as e:
+                    self.logger.error(f"Failed to start text memory scheduler: {e}")
+                    # スケジューラーエラーはアプリケーション全体を停止させない
+                    self.text_memory_scheduler = None
+            
             self.is_running = True
             self.logger.info("CocoroCore2App startup completed")
             
@@ -121,6 +179,15 @@ class CocoroCore2App:
         """アプリケーション終了処理"""
         try:
             self.logger.info("Shutting down CocoroCore2App...")
+            
+            # テキストメモリスケジューラー停止
+            if self.text_memory_scheduler and self.text_memory_scheduler.is_running:
+                try:
+                    self.logger.info("Stopping text memory scheduler...")
+                    await self.text_memory_scheduler.stop()
+                    self.logger.info("Text memory scheduler stopped")
+                except Exception as e:
+                    self.logger.error(f"Failed to stop text memory scheduler: {e}")
             
             # 各コンポーネントのクリーンアップ
             # 正規版MOSは特別なクリーンアップ不要
@@ -486,8 +553,21 @@ class CocoroCore2App:
                     "speech_enabled": self.config.speech.enabled,
                     "mcp_enabled": self.config.mcp.enabled,
                     "shell_integration": self.config.shell_integration.enabled,
+                    "text_memory_scheduler_enabled": self.config.mem_scheduler.enabled,
                 }
             }
+            
+            # スケジューラー情報を追加
+            if self.text_memory_scheduler:
+                status["scheduler_status"] = self.text_memory_scheduler.get_scheduler_status()
+            else:
+                status["scheduler_status"] = {
+                    "initialized": False,
+                    "running": False,
+                    "enabled": self.config.mem_scheduler.enabled,
+                    "available": False,
+                    "reason": "scheduler not created"
+                }
             
             return status
             
