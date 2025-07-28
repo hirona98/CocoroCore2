@@ -80,13 +80,6 @@ class CocoroCore2App:
                 self.neo4j_manager = Neo4jManager(neo4j_config)
                 self.logger.info("Neo4j manager created for embedded mode")
                 
-                # ログレベル設定
-                logging.getLogger("neo4j").setLevel(logging.INFO)
-                logging.getLogger("neo4j.io").setLevel(logging.INFO)
-                logging.getLogger("neo4j.pool").setLevel(logging.INFO)
-                logging.getLogger("httpcore.http11").setLevel(logging.INFO)
-                logging.getLogger("openai").setLevel(logging.INFO)
-
             except Exception as e:
                 self.logger.error(f"Failed to create Neo4j manager: {e}")
                 self.neo4j_manager = None
@@ -286,6 +279,9 @@ class CocoroCore2App:
                 # ユーザーが既に存在する場合はエラーを無視
                 self.logger.info(f"User {self.default_user_id} may already exist: {e}")
             
+            # MemCube確実に作成
+            self._ensure_user_memcube(self.default_user_id)
+            
             # テスト用のメモリ追加で動作確認
             try:
                 test_content = f"System startup at {datetime.now().isoformat()}"
@@ -293,6 +289,9 @@ class CocoroCore2App:
                 self.logger.info("MemOS functionality verified")
             except Exception as e:
                 self.logger.warning(f"MemOS test failed: {e}")
+                # MemCube作成を再試行
+                self.logger.info("Retrying MemCube creation...")
+                self._ensure_user_memcube(self.default_user_id)
             
             # 音声処理パイプラインの初期化（将来実装）
             if self.config.speech.enabled:
@@ -366,8 +365,27 @@ class CocoroCore2App:
                 except Exception as e:
                     self.logger.error(f"Failed to stop text memory scheduler: {e}")
             
+            # MemCubeの永続化（Neo4j停止前に実行）
+            try:
+                self.logger.info("Persisting MemCubes...")
+                
+                # MOSに登録されている全MemCubeを永続化
+                for mem_cube_id, mem_cube in self.mos.mem_cubes.items():
+                    cube_dir = f".memos/user_cubes/{mem_cube_id}"
+                    try:
+                        # ディレクトリ作成とダンプ実行
+                        import os
+                        os.makedirs(cube_dir, exist_ok=True)
+                        mem_cube.dump(cube_dir)
+                        self.logger.info(f"MemCube {mem_cube_id} persisted to {cube_dir}")
+                    except Exception as e:
+                        self.logger.error(f"Failed to persist MemCube {mem_cube_id}: {e}")
+                
+                self.logger.info("MemCube persistence completed")
+            except Exception as e:
+                self.logger.error(f"Failed to persist MemCubes: {e}")
+            
             # 各コンポーネントのクリーンアップ
-            # 正規版MOSは特別なクリーンアップ不要
             
             # 音声処理パイプラインのクリーンアップ（将来実装）
             # await self.voice_pipeline.cleanup()
@@ -375,7 +393,7 @@ class CocoroCore2App:
             # MCP統合のクリーンアップ（将来実装）
             # await self.mcp_tools.cleanup()
             
-            # Neo4j組み込みサービス停止
+            # Neo4j組み込みサービス停止（最後に実行：dump完了後）
             if self.neo4j_manager:
                 try:
                     self.logger.info("Stopping embedded Neo4j service...")
@@ -898,20 +916,25 @@ class CocoroCore2App:
                 
                 # 既存のMemCubeがMOSに登録されているか確認
                 all_cubes_registered = True
+                import os
                 for cube in user_cubes:
                     cube_id = cube.cube_id
                     if cube_id not in self.mos.mem_cubes:
                         self.logger.info(f"Re-registering existing MemCube {cube_id} for user {user_id}")
                         try:
-                            # MemCubeをファイルから読み込んで再登録
-                            from memos.mem_cube.general import GeneralMemCube
-                            import os
+                            # TreeTextMemoryの場合、実際のデータはNeo4jに保存されている
+                            # MemCubeディレクトリからのロードを試行
                             cube_path = f".memos/user_cubes/{cube_id}"
+                            
                             if os.path.exists(cube_path):
-                                self.mos.register_mem_cube(cube_path, user_id=user_id)
-                                self.logger.info(f"Successfully re-registered MemCube {cube_id}")
+                                # パスから適切なcube_idを抽出してMemCubeをロード
+                                mem_cube = GeneralMemCube.init_from_dir(cube_path)
+                                # MemCubeオブジェクトを直接登録してIDの重複を回避
+                                self.mos.register_mem_cube(mem_cube, user_id=user_id)
+                                self.logger.info(f"Successfully re-registered MemCube from {cube_path}")
                             else:
-                                self.logger.warning(f"MemCube path not found: {cube_path}, will create new MemCube")
+                                # MemCubeディレクトリが存在しない場合は新規作成が必要
+                                self.logger.warning(f"MemCube directory not found: {cube_path}")
                                 all_cubes_registered = False
                                 break
                         except Exception as e:
@@ -943,12 +966,16 @@ class CocoroCore2App:
             self.logger.info(f"Created MemCube with config cube_id: {cube_config.cube_id}")
             self.logger.info(f"Created MemCube actual cube_id: {mem_cube.config.cube_id}")
             
-            # MOSにMemCubeを直接登録
+            # MOSにMemCubeを直接登録（メモリ内管理）
             self.mos.register_mem_cube(mem_cube, user_id=user_id)
             
             # 登録後のMemCube確認
             registered_cubes = self.mos.user_manager.get_user_cubes(user_id)
-            self.logger.info(f"Registered cubes for user {user_id}: {[cube.cube_id for cube in registered_cubes]}")
+            registered_cube_ids = [cube.cube_id for cube in registered_cubes]
+            self.logger.info(f"Registered cubes for user {user_id}: {registered_cube_ids}")
+            
+            # MemCubeは正常にメモリ内に登録された（永続化はshutdown時に実行）
+            self.logger.debug("MemCube registered in memory, persistence will be handled at shutdown")
             
             self.logger.info(f"Created and registered default MemCube for user: {user_id}")
             
