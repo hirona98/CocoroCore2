@@ -11,7 +11,7 @@ from typing import Dict, Optional
 from ..core_app import CocoroCore2App
 from ..core.session_manager import SessionManager
 from ..clients.cocoro_dock_client import CocoroDockClient
-from .models import CoreChatRequest, CoreControlRequest, CoreNotificationRequest, HealthCheckResponse
+from .models import CoreControlRequest, CoreNotificationRequest, HealthCheckResponse
 
 
 class LegacyAPIAdapter:
@@ -31,133 +31,6 @@ class LegacyAPIAdapter:
         # CocoroDockクライアント初期化
         self.dock_client = CocoroDockClient()
     
-    async def handle_legacy_chat_rest(self, request: CoreChatRequest) -> Dict:
-        """既存/chatエンドポイント処理 - RESTレスポンス
-        
-        Args:
-            request: チャットリクエスト
-            
-        Returns:
-            Dict: JSONレスポンス
-        """
-        try:
-            # session_id -> user_id 変換（CocoroDockから送信されるuser_idをそのまま使用）
-            user_id = self._get_user_id_from_session(request.session_id, request.user_id)
-            
-            # ユーザーの存在を確保
-            self.core_app.ensure_user(user_id)
-            
-            # セッション管理
-            session = self.session_manager.ensure_session(request.session_id, user_id)
-            
-            self.logger.debug(f"Processing legacy chat REST for session {request.session_id}, user {user_id}")
-            
-            # コンテキストID生成
-            import uuid
-            context_id = request.context_id or str(uuid.uuid4())
-            
-            # 即座に成功レスポンスを返す（処理開始通知）
-            success_response = {
-                "status": "success",
-                "message": "Chat processing started",
-                "session_id": request.session_id,
-                "context_id": context_id
-            }
-            
-            # バックグラウンドでAI処理を実行
-            import asyncio
-            asyncio.create_task(self._process_chat_async(
-                request=request,
-                user_id=user_id,
-                context_id=context_id
-            ))
-            
-            return success_response
-            
-        except Exception as e:
-            self.logger.error(f"Chat processing initialization failed: {e}")
-            return {
-                "status": "error",
-                "message": f"処理開始エラー: {str(e)}",
-                "session_id": request.session_id,
-                "context_id": request.context_id
-            }
-    
-    async def _process_chat_async(
-        self, 
-        request: CoreChatRequest, 
-        user_id: str, 
-        context_id: str
-    ):
-        """バックグラウンドでチャット処理を実行
-        
-        Args:
-            request: チャットリクエスト
-            user_id: ユーザーID
-            context_id: コンテキストID
-        """
-        try:
-            self.logger.debug(f"Starting background chat processing for session {request.session_id}")
-            
-            # システムプロンプトを取得（リクエストから指定されていればそれを使用）
-            system_prompt = None
-            if request.system_prompt_params and "prompt" in request.system_prompt_params:
-                system_prompt = request.system_prompt_params["prompt"]
-            
-            # MemOSからレスポンス取得（同期処理）
-            response = self.core_app.memos_chat(
-                query=request.text,
-                user_id=user_id,
-                context=request.metadata,
-                system_prompt=system_prompt
-            )
-            
-            self.logger.debug(f"MemOS response received: {response[:100]}...")
-            
-            # CocoroDockにメッセージ送信
-            success = await self.dock_client.send_chat_message(
-                content=response,
-                role="assistant"
-            )
-            
-            if success:
-                self.logger.info(f"Chat response sent to CocoroDock successfully")
-            else:
-                self.logger.error(f"Failed to send chat response to CocoroDock")
-                
-        except Exception as e:
-            self.logger.error(f"Background chat processing failed: {e}")
-            
-            # エラーメッセージをCocoroDockに送信
-            try:
-                await self.dock_client.send_chat_message(
-                    content=f"処理エラー: {str(e)}",
-                    role="assistant"  # systemではなくassistantとして送信
-                )
-            except Exception as send_error:
-                self.logger.error(f"Failed to send error message to CocoroDock: {send_error}")
-    
-    def _get_user_id_from_session(self, session_id: str, fallback_user_id: str) -> str:
-        """セッションIDからユーザーIDを取得
-        
-        Args:
-            session_id: セッションID
-            fallback_user_id: フォールバック用ユーザーID
-            
-        Returns:
-            str: ユーザーID
-        """
-        # セッション管理からユーザーIDを取得
-        session = self.session_manager.get_session(session_id)
-        
-        if session:
-            return session.user_id
-        
-        # セッションが存在しない場合はフォールバック
-        if not fallback_user_id:
-            # フォールバックuser_idが指定されていない場合はエラー
-            raise ValueError("フォールバックuser_idが指定されていません")
-        return fallback_user_id
     
     async def handle_legacy_notification(self, request: CoreNotificationRequest) -> Dict:
         """既存通知エンドポイント処理
@@ -169,18 +42,24 @@ class LegacyAPIAdapter:
             Dict: 処理結果
         """
         try:
-            # 通知も/chatエンドポイントを使用（設計書準拠）
-            chat_request = CoreChatRequest(
-                type=request.type,
-                session_id=request.session_id,
+            # ユーザーの存在を確保
+            self.core_app.ensure_user(request.user_id)
+            
+            # セッション管理
+            session = self.session_manager.ensure_session(request.session_id, request.user_id)
+            
+            # MemOSに直接送信
+            response = self.core_app.memos_chat(
+                query=request.text,
                 user_id=request.user_id,
-                context_id=request.context_id,
-                text=request.text,
-                metadata=request.metadata
+                context=request.metadata
             )
             
-            # RESTチャットとして処理
-            result = await self.handle_legacy_chat_rest(chat_request)
+            # CocoroDockにメッセージ送信
+            await self.dock_client.send_chat_message(
+                content=response,
+                role="assistant"
+            )
             
             return {
                 "status": "success",

@@ -34,17 +34,7 @@ class ErrorResponse(BaseModel):
 # チャット関連モデル（CocoroDock互換）
 # ========================================
 
-class CoreChatRequest(BaseModel):
-    """チャットリクエストモデル（既存CocoroCore互換）"""
-    type: Optional[str] = Field(None, description="メッセージタイプ")
-    session_id: str = Field(description="セッションID")
-    user_id: str = Field(description="ユーザーID")
-    context_id: Optional[str] = Field(None, description="コンテキストID")
-    text: str = Field(description="メッセージテキスト")
-    audio_data: Optional[str] = Field(None, description="音声データ（Base64）")
-    files: Optional[List[str]] = Field(None, description="添付ファイル")
-    system_prompt_params: Optional[Dict[str, Any]] = Field(None, description="システムプロンプトパラメータ")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="メタデータ")
+# CoreChatRequest は廃止されました - 統一API（UnifiedChatRequest）を使用してください
 
 
 class SseData(BaseModel):

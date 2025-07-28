@@ -15,7 +15,7 @@ from ..core_app import CocoroCore2App
 from ..core.session_manager import SessionManager
 from .legacy_adapter import LegacyAPIAdapter
 from .models import (
-    CoreChatRequest, CoreControlRequest, CoreNotificationRequest,
+    CoreControlRequest, CoreNotificationRequest,
     HealthCheckResponse, McpToolRegistrationResponse,
     MemOSChatRequest, MemOSChatResponse,
     MemoryAddRequest, MemorySearchRequest, MemorySearchResponse,
