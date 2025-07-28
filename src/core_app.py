@@ -320,7 +320,7 @@ class CocoroCore2App:
         return user_id
     
     def memos_chat(self, query: str, user_id: Optional[str] = None, context: Optional[Dict] = None, system_prompt: Optional[str] = None) -> str:
-        """MemOS純正チャット処理（同期）
+        """MemOS純正チャット処理（スケジューラー連携付き）
         
         Args:
             query: ユーザーの質問
@@ -348,8 +348,32 @@ class CocoroCore2App:
             # システムプロンプトをqueryに追加
             full_query = f"{effective_system_prompt}\n\n{query}"
             
+            # スケジューラーにクエリメッセージを送信
+            if self.config.mem_scheduler.auto_submit_query:
+                mem_cube = self._get_user_memcube(effective_user_id)
+                if mem_cube:
+                    self._safely_submit_to_scheduler(
+                        "query_message",
+                        self.text_memory_scheduler.submit_query_message,
+                        user_id=effective_user_id,
+                        content=query,  # 元のクエリ（システムプロンプトは含まない）
+                        mem_cube=mem_cube
+                    )
+            
             # 正規版MOSでのチャット処理
             response = self.mos.chat(query=full_query, user_id=effective_user_id)
+            
+            # スケジューラーに応答メッセージを送信
+            if self.config.mem_scheduler.auto_submit_answer:
+                mem_cube = self._get_user_memcube(effective_user_id)
+                if mem_cube:
+                    self._safely_submit_to_scheduler(
+                        "answer_message",
+                        self.text_memory_scheduler.submit_answer_message,
+                        user_id=effective_user_id,
+                        content=response,
+                        mem_cube=mem_cube
+                    )
             
             self.logger.debug(f"Chat response: {len(response)} characters")
             return response

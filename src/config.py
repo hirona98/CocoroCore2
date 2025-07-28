@@ -100,13 +100,22 @@ class MemSchedulerConfig(BaseModel):
     consume_interval_seconds: int = 2
     act_mem_update_interval: int = 300
     
+    # チャット連携設定
+    enable_chat_integration: bool = True
+    enable_memory_integration: bool = True
+    auto_submit_query: bool = True
+    auto_submit_answer: bool = True
+    
     # テキストメモリ特化設定
     text_memory_optimization: Dict[str, Any] = Field(default_factory=lambda: {
         "enable_deduplication": True,
         "similarity_threshold": 0.95,
         "working_memory_size": 20,
         "long_term_memory_capacity": 10000,
-        "user_memory_capacity": 10000
+        "user_memory_capacity": 10000,
+        # エラーハンドリング設定
+        "graceful_degradation": True,
+        "log_scheduler_errors": True
     })
 
 
