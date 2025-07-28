@@ -40,24 +40,11 @@ def get_legacy_adapter(
 
 
 # ========================================
-# 互換性エンドポイント（CocoroDock向け）
+# 旧互換性エンドポイント（廃止済み）
 # ========================================
 
-@router.post("/chat")
-async def legacy_chat(
-    request: CoreChatRequest,
-    adapter: LegacyAPIAdapter = Depends(get_legacy_adapter)
-):
-    """既存/chatエンドポイント - 通常のRESTレスポンス"""
-    try:
-        logger.debug(f"Received chat request: {request}")
-        return await adapter.handle_legacy_chat_rest(request)
-    except Exception as e:
-        logger.error(f"Legacy chat endpoint error: {e}")
-        raise HTTPException(status_code=500, detail=f"チャット処理エラー: {str(e)}")
-
-
-# SSEテストエンドポイントは削除（RESTに移行のため）
+# 旧 /chat エンドポイントは廃止されました
+# 新しい統一API /api/chat/unified を使用してください
 
 
 @router.get("/health", response_model=HealthCheckResponse)
