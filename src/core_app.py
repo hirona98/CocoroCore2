@@ -370,14 +370,15 @@ class CocoroCore2App:
                 self.logger.info("Persisting MemCubes...")
                 
                 # MOSに登録されている全MemCubeを永続化
-                for mem_cube_id, mem_cube in self.mos.mem_cubes.items():
-                    cube_dir = f".memos/user_cubes/{mem_cube_id}"
-                    try:
-                        # ディレクトリ作成とダンプ実行
-                        import os
-                        os.makedirs(cube_dir, exist_ok=True)
-                        mem_cube.dump(cube_dir)
-                        self.logger.info(f"MemCube {mem_cube_id} persisted to {cube_dir}")
+                import os
+                import shutil
+                for mem_cube_id in self.mos.mem_cubes.keys():  
+                    cube_dir = f".memos/user_cubes/{mem_cube_id}"  
+                    try:  
+                        if os.path.exists(cube_dir):  
+                            shutil.rmtree(cube_dir)  
+                        self.mos.dump(cube_dir, mem_cube_id=mem_cube_id)
+
                     except Exception as e:
                         self.logger.error(f"Failed to persist MemCube {mem_cube_id}: {e}")
                 
