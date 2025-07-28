@@ -4,6 +4,7 @@ CocoroCore2 API Services
 各エンドポイントのビジネスロジックを提供
 """
 
+import asyncio
 import logging
 from typing import Dict, Optional
 from ..core_app import CocoroCore2App
@@ -112,10 +113,13 @@ class ControlService:
             # システム終了ログ
             self.logger.info("Shutdown command received")
             
-            # 将来的にはアプリケーションのグレースフルシャットダウンを実装
+            # バックグラウンドでシャットダウン処理を開始
+            asyncio.create_task(self._execute_shutdown())
+            
+            # 即座に受付確認を返す
             return {
                 "status": "success",
-                "message": "システム終了要求を受け付けました"
+                "message": "システム終了要求を受け付けました。"
             }
             
         except Exception as e:
@@ -124,6 +128,24 @@ class ControlService:
                 "status": "error",
                 "message": f"終了処理エラー: {str(e)}"
             }
+    
+    async def _execute_shutdown(self):
+        """バックグラウンドでシャットダウン処理を実行"""
+        try:
+            self.logger.info("Starting background shutdown process...")
+            
+            # アプリケーションのシャットダウン
+            await self.core_app.shutdown()
+            self.logger.info("Application shutdown completed")
+            
+            # サーバー停止のためのシグナル送信
+            import os
+            import signal
+            self.logger.info("Sending shutdown signal to server...")
+            os.kill(os.getpid(), signal.SIGTERM)
+            
+        except Exception as e:
+            self.logger.error(f"Background shutdown failed: {e}")
     
     async def _handle_stt_control(self, params: Optional[Dict]) -> Dict:
         """STT制御処理"""
