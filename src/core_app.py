@@ -121,6 +121,98 @@ class CocoroCore2App:
             self.logger.error(f"Failed to get chat LLM from MOS: {e}")
             raise RuntimeError(f"MOSからLLMインスタンスの取得に失敗しました: {e}")
     
+    def _get_user_memcube(self, user_id: str) -> Optional["GeneralMemCube"]:
+        """ユーザーのデフォルトMemCubeを取得
+        
+        Args:
+            user_id: ユーザーID
+            
+        Returns:
+            Optional[GeneralMemCube]: MemCubeインスタンス（見つからない場合はNone）
+        """
+        try:
+            # ユーザーの存在を確認・作成
+            self.ensure_user(user_id)
+            
+            # ユーザーのMemCubeリストを取得
+            user_cubes = self.mos.user_manager.get_user_cubes(user_id=user_id)
+            
+            if not user_cubes or len(user_cubes) == 0:
+                self.logger.warning(f"No MemCubes found for user {user_id}")
+                return None
+            
+            # 最初のMemCubeをデフォルトとして使用
+            default_cube = user_cubes[0]
+            cube_id = default_cube.cube_id
+            
+            # MOSのmem_cubesに登録されているかチェック
+            if cube_id in self.mos.mem_cubes:
+                self.logger.debug(f"Retrieved MemCube {cube_id} for user {user_id}")
+                return self.mos.mem_cubes[cube_id]
+            else:
+                # 登録されていない場合は警告ログ
+                self.logger.warning(f"MemCube {cube_id} found but not registered in MOS for user {user_id}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get MemCube for user {user_id}: {e}")
+            return None
+
+    def _get_user_memcube_id(self, user_id: str) -> Optional[str]:
+        """ユーザーのデフォルトMemCube IDを取得
+        
+        Args:
+            user_id: ユーザーID
+            
+        Returns:
+            Optional[str]: MemCube ID（見つからない場合はNone）
+        """
+        try:
+            user_cubes = self.mos.user_manager.get_user_cubes(user_id=user_id)
+            
+            if not user_cubes or len(user_cubes) == 0:
+                return None
+            
+            return user_cubes[0].cube_id
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get MemCube ID for user {user_id}: {e}")
+            return None
+
+    def _safely_submit_to_scheduler(self, action_name: str, submit_func, *args, **kwargs) -> bool:
+        """スケジューラーへの安全なメッセージ送信
+        
+        Args:
+            action_name: アクション名（ログ用）
+            submit_func: 送信関数
+            *args, **kwargs: 送信関数への引数
+            
+        Returns:
+            bool: 送信成功フラグ
+        """
+        try:
+            # スケジューラーが利用可能かチェック
+            if not (self.text_memory_scheduler and 
+                    self.text_memory_scheduler.is_running and
+                    self.config.mem_scheduler.enabled):
+                self.logger.debug(f"Scheduler not available for {action_name}")
+                return False
+            
+            # メッセージ送信実行
+            submit_func(*args, **kwargs)
+            self.logger.debug(f"Successfully submitted {action_name} to scheduler")
+            return True
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to submit {action_name} to scheduler: {e}")
+            
+            # グレースフルデグラデーション設定がある場合はエラーを隠す
+            if self.config.mem_scheduler.text_memory_optimization.get("graceful_degradation", True):
+                return False
+            else:
+                # 設定で例外の再発生が指定されている場合
+                raise
+    
     async def startup(self):
         """アプリケーション起動処理"""
         try:
