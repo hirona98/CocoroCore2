@@ -1,7 +1,6 @@
 """
-CocoroCore2 Core Application - MOS.simple() Version
+CocoroCore2 Core Application
 
-MemOS.simple()を使用したシンプルで確実な実装
 """
 
 import os
