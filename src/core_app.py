@@ -92,7 +92,7 @@ class CocoroCore2App:
             
             # 環境変数設定
             os.environ["OPENAI_API_KEY"] = api_key
-            os.environ["MOS_TEXT_MEM_TYPE"] = "general_text"
+            os.environ["MOS_TEXT_MEM_TYPE"] = "tree_text"
             
             # 必要に応じて他の環境変数も設定
             if "OPENAI_API_BASE" not in os.environ:
@@ -765,16 +765,25 @@ class CocoroCore2App:
         self.logger.debug(f"  - Vector dimension: {vector_dimension} (from {'config' if getattr(self.config, 'embedder_config', {}).get('vector_dimension') else 'model-based fallback'})")
         self.logger.debug(f"  - Chat model: {chat_model_config['model_name_or_path']}")
         
-        # MemCube設定を構築
+        # TreeTextMemory用のMemCube設定を構築
         cube_config = {
             "user_id": user_id,
             "cube_id": f"{user_id}_default_cube",
             "text_mem": {
-                "backend": "general_text",
+                "backend": "tree_text",
                 "config": {
                     "cube_id": f"{user_id}_default_cube",
-                    "memory_filename": "textual_memory.json",
+                    "memory_filename": "tree_textual_memory.json",
                     "extractor_llm": {
+                        "backend": mos_config["chat_model"]["backend"],
+                        "config": {
+                            "model_name_or_path": chat_model_config["model_name_or_path"],
+                            "temperature": 0.0,  # Memory用は固定値
+                            "api_key": chat_model_config["api_key"],
+                            "api_base": chat_model_config.get("api_base", "https://api.openai.com/v1")
+                        }
+                    },
+                    "dispatcher_llm": {
                         "backend": mos_config["chat_model"]["backend"],
                         "config": {
                             "model_name_or_path": chat_model_config["model_name_or_path"],
@@ -792,15 +801,18 @@ class CocoroCore2App:
                             "base_url": embedder_config.get("base_url", "https://api.openai.com/v1")
                         }
                     },
-                    "vector_db": {
-                        "backend": "qdrant",
+                    "graph_db": {
+                        "backend": "neo4j",
                         "config": {
-                            "collection_name": f"{user_id}_collection",
-                            "path": ".memos/qdrant",
-                            "distance_metric": "cosine",
-                            "vector_dimension": vector_dimension
+                            "uri": self.config.neo4j.uri,
+                            "user": self.config.neo4j.user,
+                            "password": self.config.neo4j.password,
+                            "db_name": self.config.neo4j.db_name,
+                            "auto_create": self.config.neo4j.auto_create,
+                            "embedding_dimension": vector_dimension  # 動的に設定
                         }
-                    }
+                    },
+                    "reorganize": False  # 初期は無効
                 }
             },
             "act_mem": {},

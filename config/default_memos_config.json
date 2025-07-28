@@ -100,6 +100,14 @@
     "max_sessions": 1000,
     "cleanup_interval_seconds": 30
   },
+  "neo4j": {
+    "uri": "bolt://localhost:7687",
+    "user": "neo4j",
+    "password": "${NEO4J_PASSWORD}",
+    "db_name": "cocoro_core2_tree_memory",
+    "auto_create": true,
+    "embedding_dimension": 3072
+  },
   "mem_scheduler": {
     "enabled": true,
     "top_k": 5,
