@@ -106,7 +106,7 @@ def test_memcube_config_creation():
                             "user": config.neo4j.user,
                             "password": config.neo4j.password,
                             "db_name": config.neo4j.db_name,
-                            "auto_create": config.neo4j.auto_create,
+                            "auto_create": False,  # Community Editionでは強制無効
                             "embedding_dimension": vector_dimension
                         }
                     },

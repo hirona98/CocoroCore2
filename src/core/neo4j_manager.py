@@ -37,7 +37,6 @@ class Neo4jManager:
                 - user: ユーザー名
                 - password: パスワード
                 - db_name: データベース名
-                - auto_create: データベース自動作成
                 - embedded_enabled: 組み込みモード有効
                 - java_home: JREホームディレクトリ（相対パス）
                 - neo4j_home: Neo4jホームディレクトリ（相対パス）
@@ -101,10 +100,7 @@ class Neo4jManager:
                 await self._stop_process()
                 return False
             
-            # 5. データベース初期化
-            if not await self._initialize_database():
-                await self._stop_process()
-                return False
+            # 5. データベース初期化は不要（Community Editionでは単一DBのみ）
             
             logger.info("組み込みNeo4jサービスの起動が完了しました")
             return True
@@ -438,39 +434,6 @@ class Neo4jManager:
             # デバッグ用に詳細エラー情報をログ出力
             logger.debug(f"Neo4j接続テスト失敗: {e}")
             return False
-    
-    async def _initialize_database(self) -> bool:
-        """データベース初期化
-        
-        Returns:
-            bool: 初期化成功時True
-        """
-        try:
-            if not self.config.get("auto_create", True):
-                return True
-            
-            driver = await self.get_driver()
-            
-            def _initialize():
-                with driver.session() as session:
-                    # データベース存在確認
-                    result = session.run("SHOW DATABASES")
-                    databases = [record["name"] for record in result]
-                    
-                    if self.db_name not in databases:
-                        logger.info(f"データベース '{self.db_name}' を作成中...")
-                        session.run(f"CREATE DATABASE `{self.db_name}`")
-                        logger.info(f"データベース '{self.db_name}' を作成しました")
-                    
-                    return True
-            
-            return await asyncio.get_event_loop().run_in_executor(
-                None, _initialize
-            )
-            
-        except Exception as e:
-            logger.warning(f"データベース初期化エラー（継続します）: {e}")
-            return True  # 初期化失敗でも起動は継続
     
     async def _stop_process(self):
         """Neo4jプロセスを停止"""

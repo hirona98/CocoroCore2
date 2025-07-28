@@ -62,8 +62,7 @@ class Neo4jConfig(BaseModel):
     uri: str = "bolt://localhost:7687"
     user: str = "neo4j"
     password: str = "12345678"  # 開発環境デフォルト
-    db_name: str = "cocoro_core2_tree_memory"
-    auto_create: bool = True
+    db_name: str = "neo4j"
     embedding_dimension: int = 3072  # text-embedding-3-large
     
     # 組み込みNeo4j設定

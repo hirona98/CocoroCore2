@@ -72,7 +72,6 @@ class CocoroCore2App:
                     "user": config.neo4j.user,
                     "password": config.neo4j.password,
                     "db_name": config.neo4j.db_name,
-                    "auto_create": config.neo4j.auto_create,
                     "embedded_enabled": config.neo4j.embedded_enabled,
                     "java_home": config.neo4j.java_home,
                     "neo4j_home": config.neo4j.neo4j_home,
@@ -80,6 +79,14 @@ class CocoroCore2App:
                 }
                 self.neo4j_manager = Neo4jManager(neo4j_config)
                 self.logger.info("Neo4j manager created for embedded mode")
+                
+                # ログレベル設定
+                logging.getLogger("neo4j").setLevel(logging.INFO)
+                logging.getLogger("neo4j.io").setLevel(logging.INFO)
+                logging.getLogger("neo4j.pool").setLevel(logging.INFO)
+                logging.getLogger("httpcore.http11").setLevel(logging.INFO)
+                logging.getLogger("openai").setLevel(logging.INFO)
+
             except Exception as e:
                 self.logger.error(f"Failed to create Neo4j manager: {e}")
                 self.neo4j_manager = None
@@ -858,7 +865,7 @@ class CocoroCore2App:
                             "user": self.config.neo4j.user,
                             "password": self.config.neo4j.password,
                             "db_name": self.config.neo4j.db_name,
-                            "auto_create": self.config.neo4j.auto_create,
+                            "auto_create": False,  # Community Editionでは強制的に無効
                             "embedding_dimension": vector_dimension  # 動的に設定
                         }
                     },
