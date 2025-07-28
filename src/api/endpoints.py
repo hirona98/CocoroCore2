@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from ..app import get_app_instance, get_session_manager
 from ..core_app import CocoroCore2App
 from ..core.session_manager import SessionManager
-from .legacy_adapter import LegacyAPIAdapter
+from .services import HealthService, ControlService, NotificationService
 from .models import (
     CoreControlRequest, CoreNotificationRequest,
     HealthCheckResponse, McpToolRegistrationResponse,
@@ -31,42 +31,32 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def get_legacy_adapter(
-    core_app: CocoroCore2App = Depends(get_app_instance),
-    session_manager: SessionManager = Depends(get_session_manager)
-) -> LegacyAPIAdapter:
-    """互換性アダプターを取得"""
-    return LegacyAPIAdapter(core_app, session_manager)
 
 
 # ========================================
-# 旧互換性エンドポイント（廃止済み）
+# 基本エンドポイント
 # ========================================
-
-# 旧 /chat エンドポイントは廃止されました
-# 新しい統一API /api/chat/unified を使用してください
 
 
 @router.get("/health", response_model=HealthCheckResponse)
-async def legacy_health(
-    adapter: LegacyAPIAdapter = Depends(get_legacy_adapter)
+async def health_check(
+    core_app: CocoroCore2App = Depends(get_app_instance),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
-    """既存/healthエンドポイント - ヘルスチェック"""
-    try:
-        return await adapter.handle_legacy_health()
-    except Exception as e:
-        logger.error(f"Health check error: {e}")
-        raise HTTPException(status_code=500, detail=f"ヘルスチェックエラー: {str(e)}")
+    """ヘルスチェックエンドポイント"""
+    service = HealthService(core_app, session_manager)
+    return await service.get_health_status()
 
 
 @router.post("/api/control")
-async def legacy_control(
+async def control_command(
     request: CoreControlRequest,
-    adapter: LegacyAPIAdapter = Depends(get_legacy_adapter)
+    core_app: CocoroCore2App = Depends(get_app_instance)
 ):
-    """既存/api/controlエンドポイント - システム制御"""
+    """システム制御エンドポイント"""
     try:
-        result = await adapter.handle_legacy_control(request)
+        service = ControlService(core_app)
+        result = await service.handle_control_command(request)
         return result
     except Exception as e:
         logger.error(f"Control command error: {e}")
@@ -338,17 +328,19 @@ async def create_user(
 
 
 # ========================================
-# 通知エンドポイント（互換性）
+# 通知エンドポイント
 # ========================================
 
 @router.post("/api/notification")
 async def send_notification(
     request: CoreNotificationRequest,
-    adapter: LegacyAPIAdapter = Depends(get_legacy_adapter)
+    core_app: CocoroCore2App = Depends(get_app_instance),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """通知送信エンドポイント"""
     try:
-        result = await adapter.handle_legacy_notification(request)
+        service = NotificationService(core_app, session_manager)
+        result = await service.handle_notification(request)
         return result
     except Exception as e:
         logger.error(f"Notification error: {e}")
