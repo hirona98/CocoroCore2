@@ -106,16 +106,34 @@ class MemSchedulerConfig(BaseModel):
     auto_submit_query: bool = True
     auto_submit_answer: bool = True
     
+    # Phase 3: 自動最適化機能設定
+    enable_auto_optimization: bool = True
+    auto_optimize_interval: int = 3600  # 秒
+    auto_optimize_threshold: int = 50   # 記憶数
+    max_concurrent_optimizations: int = 3
+    
     # テキストメモリ特化設定
     text_memory_optimization: Dict[str, Any] = Field(default_factory=lambda: {
+        # Phase 2までの既存設定
         "enable_deduplication": True,
         "similarity_threshold": 0.95,
         "working_memory_size": 20,
         "long_term_memory_capacity": 10000,
         "user_memory_capacity": 10000,
-        # エラーハンドリング設定
         "graceful_degradation": True,
-        "log_scheduler_errors": True
+        "log_scheduler_errors": True,
+        
+        # Phase 3: 新規最適化設定
+        "auto_optimize_interval": 3600,
+        "auto_optimize_threshold": 50,
+        "max_concurrent_optimizations": 3,
+        "min_memory_length": 10,
+        "quality_score_threshold": 0.7,
+        "enable_background_optimization": True,
+        "optimization_batch_size": 100,
+        "similarity_analysis_enabled": True,
+        "reranking_enabled": True,
+        "memory_lifecycle_management": True
     })
 
 

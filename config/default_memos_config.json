@@ -57,6 +57,10 @@
     "enable_memory_integration": true,
     "auto_submit_query": true,
     "auto_submit_answer": true,
+    "enable_auto_optimization": true,
+    "auto_optimize_interval": 3600,
+    "auto_optimize_threshold": 50,
+    "max_concurrent_optimizations": 3,
     "text_memory_optimization": {
       "enable_deduplication": true,
       "similarity_threshold": 0.95,
@@ -64,7 +68,17 @@
       "long_term_memory_capacity": 10000,
       "user_memory_capacity": 10000,
       "graceful_degradation": true,
-      "log_scheduler_errors": true
+      "log_scheduler_errors": true,
+      "auto_optimize_interval": 3600,
+      "auto_optimize_threshold": 50,
+      "max_concurrent_optimizations": 3,
+      "min_memory_length": 10,
+      "quality_score_threshold": 0.7,
+      "enable_background_optimization": true,
+      "optimization_batch_size": 100,
+      "similarity_analysis_enabled": true,
+      "reranking_enabled": true,
+      "memory_lifecycle_management": true
     }
   }
 }
