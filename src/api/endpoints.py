@@ -19,7 +19,8 @@ from .models import (
     HealthCheckResponse, McpToolRegistrationResponse,
     MemOSChatRequest, MemOSChatResponse,
     MemoryAddRequest, MemorySearchRequest, MemorySearchResponse,
-    SessionStatistics, UserStatistics, StandardResponse
+    SessionStatistics, UserStatistics, StandardResponse,
+    UnifiedChatRequest, UnifiedChatResponse
 )
 
 
@@ -98,6 +99,57 @@ async def get_mcp_tool_registration_log():
     except Exception as e:
         logger.error(f"MCP tool registration log error: {e}")
         raise HTTPException(status_code=500, detail=f"MCPログ取得エラー: {str(e)}")
+
+
+# ========================================
+# 統一API エンドポイント（新設計）
+# ========================================
+
+@router.post("/api/chat/unified", response_model=UnifiedChatResponse)
+async def unified_chat(
+    request: UnifiedChatRequest,
+    core_app: CocoroCore2App = Depends(get_app_instance),
+    session_manager: SessionManager = Depends(get_session_manager)
+):
+    """統一チャットエンドポイント - CocoroDock→CocoroCore2の新設計API"""
+    try:
+        logger.debug(f"Unified chat request: user_id={request.user_id}, session_id={request.session_id}")
+        
+        # ユーザーの存在を確保
+        core_app.ensure_user(request.user_id)
+        
+        # セッション管理（正しい用途）
+        session = session_manager.ensure_session(request.session_id, request.user_id)
+        
+        # コンテキストID生成（必要に応じて）
+        import uuid
+        context_id = request.context_id or str(uuid.uuid4())
+        
+        # MemOSに直接アクセス
+        response = core_app.memos_chat(
+            query=request.message,
+            user_id=request.user_id,
+            system_prompt=request.system_prompt
+        )
+        
+        logger.debug(f"MemOS response received: {len(response)} characters")
+        
+        return UnifiedChatResponse(
+            status="success",
+            message="チャット処理が完了しました",
+            response=response,
+            context_id=context_id,
+            session_id=request.session_id,
+            response_length=len(response)
+        )
+        
+    except Exception as e:
+        logger.error(f"Unified chat error: {e}")
+        return UnifiedChatResponse(
+            status="error",
+            message=f"チャット処理エラー: {str(e)}",
+            session_id=request.session_id
+        )
 
 
 # ========================================

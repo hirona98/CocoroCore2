@@ -203,6 +203,33 @@ class UserStatistics(BaseModel):
 
 
 # ========================================
+# 統一API モデル（新設計）
+# ========================================
+
+class UnifiedChatRequest(BaseModel):
+    """統一チャットリクエスト（CocoroDock→CocoroCore2）"""
+    user_id: str = Field(description="ユーザーID（固定値）")
+    session_id: str = Field(description="セッションID（セッション管理用）")
+    message: str = Field(description="メッセージテキスト")
+    character_name: Optional[str] = Field(None, description="キャラクター名")
+    system_prompt: Optional[str] = Field(None, description="システムプロンプト")
+    context_id: Optional[str] = Field(None, description="コンテキストID")
+    files: Optional[List[Dict[str, Any]]] = Field(None, description="添付ファイル")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="メタデータ")
+
+
+class UnifiedChatResponse(BaseModel):
+    """統一チャットレスポンス"""
+    status: str = Field(description="処理状態（success/error）")
+    message: str = Field(description="処理結果メッセージ")
+    response: Optional[str] = Field(None, description="AIの応答")
+    context_id: Optional[str] = Field(None, description="新しいコンテキストID")
+    session_id: Optional[str] = Field(None, description="セッションID")
+    response_length: Optional[int] = Field(None, description="レスポンス文字数")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="タイムスタンプ")
+
+
+# ========================================
 # 音声処理モデル（将来拡張用）
 # ========================================
 
