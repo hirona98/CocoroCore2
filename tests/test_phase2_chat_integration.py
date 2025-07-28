@@ -32,8 +32,16 @@ class TestPhase2ChatIntegration:
                     }
                 },
                 "mem_reader": {
-                    "backend": "semantic",
+                    "backend": "simple_struct",
                     "config": {
+                        "llm": {
+                            "backend": "openai",
+                            "config": {
+                                "model_name_or_path": "gpt-4",
+                                "temperature": 0.0,
+                                "api_key": "test-api-key"
+                            }
+                        },
                         "embedder": {
                             "backend": "openai",
                             "config": {

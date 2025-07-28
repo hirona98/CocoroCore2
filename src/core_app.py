@@ -383,7 +383,7 @@ class CocoroCore2App:
             raise
     
     def add_memory(self, content: str, user_id: Optional[str] = None, **context) -> None:
-        """記憶追加（同期）
+        """記憶追加（スケジューラー連携付き）
         
         Args:
             content: 記憶内容
@@ -407,6 +407,19 @@ class CocoroCore2App:
             
             # 正規版MOSAPIで記憶追加
             self.mos.add(memory_content=memory_content, user_id=effective_user_id)
+            
+            # スケジューラーに記憶追加メッセージを送信
+            if self.config.mem_scheduler.enable_memory_integration:
+                mem_cube = self._get_user_memcube(effective_user_id)
+                if mem_cube:
+                    self._safely_submit_to_scheduler(
+                        "add_message",
+                        self.text_memory_scheduler.submit_add_message,
+                        user_id=effective_user_id,
+                        content=content,  # 元のコンテンツ（コンテキスト情報は含まない）
+                        mem_cube=mem_cube
+                    )
+            
             self.logger.debug(f"Memory added: {len(content)} characters")
             
         except Exception as e:
@@ -675,14 +688,30 @@ class CocoroCore2App:
             
             # スケジューラー情報を追加
             if self.text_memory_scheduler:
-                status["scheduler_status"] = self.text_memory_scheduler.get_scheduler_status()
+                scheduler_status = self.text_memory_scheduler.get_scheduler_status()
+                
+                # Phase 2固有のステータス情報を追加
+                scheduler_status.update({
+                    "chat_integration_enabled": self.config.mem_scheduler.enable_chat_integration,
+                    "memory_integration_enabled": self.config.mem_scheduler.enable_memory_integration,
+                    "auto_submit_query": self.config.mem_scheduler.auto_submit_query,
+                    "auto_submit_answer": self.config.mem_scheduler.auto_submit_answer,
+                    "memcube_available": self._get_user_memcube(self.default_user_id) is not None
+                })
+                
+                status["scheduler_status"] = scheduler_status
             else:
                 status["scheduler_status"] = {
                     "initialized": False,
                     "running": False,
                     "enabled": self.config.mem_scheduler.enabled,
                     "available": False,
-                    "reason": "scheduler not created"
+                    "reason": "scheduler not created",
+                    "chat_integration_enabled": self.config.mem_scheduler.enable_chat_integration,
+                    "memory_integration_enabled": self.config.mem_scheduler.enable_memory_integration,
+                    "auto_submit_query": self.config.mem_scheduler.auto_submit_query,
+                    "auto_submit_answer": self.config.mem_scheduler.auto_submit_answer,
+                    "memcube_available": False
                 }
             
             return status

@@ -32,8 +32,16 @@ class TestPhase2Helpers:
                     }
                 },
                 "mem_reader": {
-                    "backend": "semantic",
+                    "backend": "simple_struct",
                     "config": {
+                        "llm": {
+                            "backend": "openai",
+                            "config": {
+                                "model_name_or_path": "gpt-4",
+                                "temperature": 0.0,
+                                "api_key": "test-api-key"
+                            }
+                        },
                         "embedder": {
                             "backend": "openai",
                             "config": {
@@ -53,8 +61,9 @@ class TestPhase2Helpers:
         }
         return CocoroCore2Config(**config_data)
     
+    @patch('src.core_app.get_mos_config')
     @patch('src.core_app.MOS')
-    def test_get_user_memcube_success(self, mock_mos_class, sample_config):
+    def test_get_user_memcube_success(self, mock_mos_class, mock_get_mos_config, sample_config):
         """MemCube取得成功テスト"""
         # MOSとMemCubeをモック
         mock_mos = Mock()
