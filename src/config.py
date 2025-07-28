@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, validator
 
 # MemOS関連インポート（遅延インポートで対応）
 # from memos.configs.mem_os import MOSConfig
@@ -91,7 +91,7 @@ class SessionConfig(BaseModel):
 
 class MemSchedulerConfig(BaseModel):
     """メモリスケジューラー設定"""
-    enabled: bool = False
+    enabled: bool = True
     top_k: int = 5
     context_window_size: int = 5
     enable_act_memory_update: bool = False
@@ -202,6 +202,7 @@ class CocoroCore2Config(BaseModel):
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
+    embedder_config: Dict[str, Any] = Field(default_factory=dict)
     mem_scheduler: MemSchedulerConfig = Field(default_factory=MemSchedulerConfig)
 
     @classmethod

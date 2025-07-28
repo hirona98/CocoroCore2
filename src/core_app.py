@@ -386,7 +386,9 @@ class CocoroCore2App:
             full_query = f"{effective_system_prompt}\n\n{query}"
             
             # スケジューラーにクエリメッセージを送信
-            if self.config.mem_scheduler.auto_submit_query:
+            if (self.config.mem_scheduler.auto_submit_query and 
+                self.text_memory_scheduler and 
+                self.text_memory_scheduler.is_running):
                 mem_cube = self._get_user_memcube(effective_user_id)
                 if mem_cube:
                     self._safely_submit_to_scheduler(
@@ -401,7 +403,9 @@ class CocoroCore2App:
             response = self.mos.chat(query=full_query, user_id=effective_user_id)
             
             # スケジューラーに応答メッセージを送信
-            if self.config.mem_scheduler.auto_submit_answer:
+            if (self.config.mem_scheduler.auto_submit_answer and 
+                self.text_memory_scheduler and 
+                self.text_memory_scheduler.is_running):
                 mem_cube = self._get_user_memcube(effective_user_id)
                 if mem_cube:
                     self._safely_submit_to_scheduler(
@@ -446,7 +450,9 @@ class CocoroCore2App:
             self.mos.add(memory_content=memory_content, user_id=effective_user_id)
             
             # スケジューラーに記憶追加メッセージを送信
-            if self.config.mem_scheduler.enable_memory_integration:
+            if (self.config.mem_scheduler.enable_memory_integration and 
+                self.text_memory_scheduler and 
+                self.text_memory_scheduler.is_running):
                 mem_cube = self._get_user_memcube(effective_user_id)
                 if mem_cube:
                     self._safely_submit_to_scheduler(
@@ -739,10 +745,12 @@ class CocoroCore2App:
         mem_reader_config = mos_config["mem_reader"]["config"]
         embedder_config = mem_reader_config["embedder"]["config"]
         
-        # ベクトル次元数をembedderモデルから推定
+        # ベクトル次元数を設定ファイルから取得、フォールバック付き
         embedder_model = embedder_config["model_name_or_path"]
+
+        # モデルから次元数を推定
         if "text-embedding-3-large" in embedder_model:
-            vector_dimension = 1536  # text-embedding-3-largeでも1536次元を使用
+            vector_dimension = 3072
         elif "text-embedding-3-small" in embedder_model:
             vector_dimension = 1536
         elif "text-embedding-ada-002" in embedder_model:
@@ -751,6 +759,11 @@ class CocoroCore2App:
             # デフォルト値
             vector_dimension = 1536
             self.logger.warning(f"Unknown embedder model {embedder_model}, using default dimension {vector_dimension}")
+        
+        self.logger.debug(f"Generated MemCube config for user {user_id}")
+        self.logger.debug(f"  - Embedder model: {embedder_model}")
+        self.logger.debug(f"  - Vector dimension: {vector_dimension} (from {'config' if getattr(self.config, 'embedder_config', {}).get('vector_dimension') else 'model-based fallback'})")
+        self.logger.debug(f"  - Chat model: {chat_model_config['model_name_or_path']}")
         
         # MemCube設定を構築
         cube_config = {
