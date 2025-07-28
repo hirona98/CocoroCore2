@@ -13,13 +13,14 @@ from fastapi.responses import StreamingResponse
 from ..app import get_app_instance, get_session_manager
 from ..core_app import CocoroCore2App
 from ..core.session_manager import SessionManager
-from .legacy_adapter import LegacyAPIAdapter
+from .services import HealthService, ControlService, NotificationService
 from .models import (
-    CoreChatRequest, CoreControlRequest, CoreNotificationRequest,
+    CoreControlRequest, CoreNotificationRequest,
     HealthCheckResponse, McpToolRegistrationResponse,
     MemOSChatRequest, MemOSChatResponse,
     MemoryAddRequest, MemorySearchRequest, MemorySearchResponse,
-    SessionStatistics, UserStatistics, StandardResponse
+    SessionStatistics, UserStatistics, StandardResponse,
+    UnifiedChatRequest, UnifiedChatResponse
 )
 
 
@@ -30,55 +31,32 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def get_legacy_adapter(
-    core_app: CocoroCore2App = Depends(get_app_instance),
-    session_manager: SessionManager = Depends(get_session_manager)
-) -> LegacyAPIAdapter:
-    """互換性アダプターを取得"""
-    return LegacyAPIAdapter(core_app, session_manager)
 
 
 # ========================================
-# 互換性エンドポイント（CocoroDock向け）
+# 基本エンドポイント
 # ========================================
-
-@router.post("/chat")
-async def legacy_chat(
-    request: CoreChatRequest,
-    adapter: LegacyAPIAdapter = Depends(get_legacy_adapter)
-):
-    """既存/chatエンドポイント - 通常のRESTレスポンス"""
-    try:
-        logger.debug(f"Received chat request: {request}")
-        return await adapter.handle_legacy_chat_rest(request)
-    except Exception as e:
-        logger.error(f"Legacy chat endpoint error: {e}")
-        raise HTTPException(status_code=500, detail=f"チャット処理エラー: {str(e)}")
-
-
-# SSEテストエンドポイントは削除（RESTに移行のため）
 
 
 @router.get("/health", response_model=HealthCheckResponse)
-async def legacy_health(
-    adapter: LegacyAPIAdapter = Depends(get_legacy_adapter)
+async def health_check(
+    core_app: CocoroCore2App = Depends(get_app_instance),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
-    """既存/healthエンドポイント - ヘルスチェック"""
-    try:
-        return await adapter.handle_legacy_health()
-    except Exception as e:
-        logger.error(f"Health check error: {e}")
-        raise HTTPException(status_code=500, detail=f"ヘルスチェックエラー: {str(e)}")
+    """ヘルスチェックエンドポイント"""
+    service = HealthService(core_app, session_manager)
+    return await service.get_health_status()
 
 
 @router.post("/api/control")
-async def legacy_control(
+async def control_command(
     request: CoreControlRequest,
-    adapter: LegacyAPIAdapter = Depends(get_legacy_adapter)
+    core_app: CocoroCore2App = Depends(get_app_instance)
 ):
-    """既存/api/controlエンドポイント - システム制御"""
+    """システム制御エンドポイント"""
     try:
-        result = await adapter.handle_legacy_control(request)
+        service = ControlService(core_app)
+        result = await service.handle_control_command(request)
         return result
     except Exception as e:
         logger.error(f"Control command error: {e}")
@@ -98,6 +76,57 @@ async def get_mcp_tool_registration_log():
     except Exception as e:
         logger.error(f"MCP tool registration log error: {e}")
         raise HTTPException(status_code=500, detail=f"MCPログ取得エラー: {str(e)}")
+
+
+# ========================================
+# 統一API エンドポイント（新設計）
+# ========================================
+
+@router.post("/api/chat/unified", response_model=UnifiedChatResponse)
+async def unified_chat(
+    request: UnifiedChatRequest,
+    core_app: CocoroCore2App = Depends(get_app_instance),
+    session_manager: SessionManager = Depends(get_session_manager)
+):
+    """統一チャットエンドポイント - CocoroDock→CocoroCore2の新設計API"""
+    try:
+        logger.debug(f"Unified chat request: user_id={request.user_id}, session_id={request.session_id}")
+        
+        # ユーザーの存在を確保
+        core_app.ensure_user(request.user_id)
+        
+        # セッション管理（正しい用途）
+        session = session_manager.ensure_session(request.session_id, request.user_id)
+        
+        # コンテキストID生成（必要に応じて）
+        import uuid
+        context_id = request.context_id or str(uuid.uuid4())
+        
+        # MemOSに直接アクセス
+        response = core_app.memos_chat(
+            query=request.message,
+            user_id=request.user_id,
+            system_prompt=request.system_prompt
+        )
+        
+        logger.debug(f"MemOS response received: {len(response)} characters")
+        
+        return UnifiedChatResponse(
+            status="success",
+            message="チャット処理が完了しました",
+            response=response,
+            context_id=context_id,
+            session_id=request.session_id,
+            response_length=len(response)
+        )
+        
+    except Exception as e:
+        logger.error(f"Unified chat error: {e}")
+        return UnifiedChatResponse(
+            status="error",
+            message=f"チャット処理エラー: {str(e)}",
+            session_id=request.session_id
+        )
 
 
 # ========================================
@@ -299,17 +328,19 @@ async def create_user(
 
 
 # ========================================
-# 通知エンドポイント（互換性）
+# 通知エンドポイント
 # ========================================
 
 @router.post("/api/notification")
 async def send_notification(
     request: CoreNotificationRequest,
-    adapter: LegacyAPIAdapter = Depends(get_legacy_adapter)
+    core_app: CocoroCore2App = Depends(get_app_instance),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """通知送信エンドポイント"""
     try:
-        result = await adapter.handle_legacy_notification(request)
+        service = NotificationService(core_app, session_manager)
+        result = await service.handle_notification(request)
         return result
     except Exception as e:
         logger.error(f"Notification error: {e}")
