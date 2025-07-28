@@ -193,11 +193,6 @@ class CocoroCore2App:
             # 正規版MOSでのチャット処理
             response = self.mos.chat(query=full_query, user_id=effective_user_id)
             
-            # コンテキスト情報を必要に応じて記憶に追加
-            if context:
-                context_content = f"Context for query '{query}': {context}"
-                self.add_memory(content=context_content, user_id=effective_user_id)
-            
             self.logger.debug(f"Chat response: {len(response)} characters")
             return response
             
