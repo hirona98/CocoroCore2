@@ -1,5 +1,6 @@
 # CocoroCore2
 .memos/
+neo4j/data/
 
 # PyInstaller
 *.spec
