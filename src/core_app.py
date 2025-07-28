@@ -12,6 +12,7 @@ from memos.mem_os.main import MOS
 
 from config import CocoroCore2Config, get_mos_config
 from .core.text_memory_scheduler import TextMemorySchedulerManager
+from .core.optimization_scheduler import OptimizationScheduler
 
 
 class CocoroCore2App:
@@ -59,14 +60,25 @@ class CocoroCore2App:
         
         # テキストメモリスケジューラー初期化
         self.text_memory_scheduler: Optional[TextMemorySchedulerManager] = None
+        self.optimization_scheduler: Optional[OptimizationScheduler] = None
+        
         if config.mem_scheduler.enabled:
             try:
                 self.text_memory_scheduler = TextMemorySchedulerManager(config)
                 self.logger.info("Text memory scheduler manager created")
+                
+                # Phase 3: 自動最適化スケジューラー初期化
+                if config.mem_scheduler.enable_auto_optimization:
+                    self.optimization_scheduler = OptimizationScheduler(config, self.text_memory_scheduler)
+                    self.logger.info("Optimization scheduler created")
+                else:
+                    self.logger.info("Auto optimization is disabled in configuration")
+                    
             except Exception as e:
                 self.logger.error(f"Failed to create text memory scheduler manager: {e}")
                 # スケジューラーエラーはアプリケーション全体を停止させない
                 self.text_memory_scheduler = None
+                self.optimization_scheduler = None
         else:
             self.logger.info("Text memory scheduler is disabled in configuration")
         
@@ -255,10 +267,26 @@ class CocoroCore2App:
                     await self.text_memory_scheduler.start()
                     
                     self.logger.info("Text memory scheduler started successfully")
+                    
+                    # Phase 3: 自動最適化スケジューラー開始
+                    if self.optimization_scheduler:
+                        try:
+                            self.logger.info("Starting optimization scheduler...")
+                            
+                            # 双方向連携を設定
+                            self.text_memory_scheduler.set_optimization_scheduler(self.optimization_scheduler)
+                            
+                            await self.optimization_scheduler.start()
+                            self.logger.info("Optimization scheduler started successfully")
+                        except Exception as e:
+                            self.logger.error(f"Failed to start optimization scheduler: {e}")
+                            self.optimization_scheduler = None
+                    
                 except Exception as e:
                     self.logger.error(f"Failed to start text memory scheduler: {e}")
                     # スケジューラーエラーはアプリケーション全体を停止させない
                     self.text_memory_scheduler = None
+                    self.optimization_scheduler = None
             
             self.is_running = True
             self.logger.info("CocoroCore2App startup completed")
@@ -271,6 +299,15 @@ class CocoroCore2App:
         """アプリケーション終了処理"""
         try:
             self.logger.info("Shutting down CocoroCore2App...")
+            
+            # Phase 3: 自動最適化スケジューラー停止
+            if self.optimization_scheduler and self.optimization_scheduler.is_running:
+                try:
+                    self.logger.info("Stopping optimization scheduler...")
+                    await self.optimization_scheduler.stop()
+                    self.logger.info("Optimization scheduler stopped")
+                except Exception as e:
+                    self.logger.error(f"Failed to stop optimization scheduler: {e}")
             
             # テキストメモリスケジューラー停止
             if self.text_memory_scheduler and self.text_memory_scheduler.is_running:
@@ -420,11 +457,196 @@ class CocoroCore2App:
                         mem_cube=mem_cube
                     )
             
+            # Phase 3: 自動最適化スケジューラーに記憶追加を通知
+            if self.optimization_scheduler and self.config.mem_scheduler.enable_auto_optimization:
+                try:
+                    self.optimization_scheduler.notify_memory_added(effective_user_id)
+                    self.logger.debug(f"Notified optimization scheduler of memory addition for user {effective_user_id}")
+                except Exception as e:
+                    self.logger.error(f"Failed to notify optimization scheduler: {e}")
+            
             self.logger.debug(f"Memory added: {len(content)} characters")
             
         except Exception as e:
             self.logger.error(f"Failed to add memory: {e}")
             # メモリ保存の失敗はチャット機能全体を停止させない
+
+    # ===========================================
+    # Phase 3: 最適化API機能
+    # ===========================================
+    
+    async def optimize_memory(
+        self, 
+        user_id: Optional[str] = None, 
+        optimization_type: str = "full",
+        force_optimization: bool = False
+    ) -> Dict[str, Any]:
+        """手動最適化実行API
+        
+        Args:
+            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
+            optimization_type: 最適化タイプ ("full", "dedup", "quality", "rerank")
+            force_optimization: 強制最適化フラグ
+            
+        Returns:
+            Dict[str, Any]: 最適化結果
+        """
+        effective_user_id = user_id or self.default_user_id
+        
+        if not self.text_memory_scheduler:
+            return {"success": False, "error": "Text memory scheduler not available"}
+        
+        try:
+            result = await self.text_memory_scheduler.optimize_text_memory(
+                user_id=effective_user_id,
+                optimization_type=optimization_type,
+                force_optimization=force_optimization
+            )
+            self.logger.info(f"Manual optimization completed for user {effective_user_id}: {optimization_type}")
+            return result
+        except Exception as e:
+            self.logger.error(f"Manual optimization failed for user {effective_user_id}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def get_optimization_status(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+        """最適化状態取得API
+        
+        Args:
+            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
+            
+        Returns:
+            Dict[str, Any]: 最適化状態情報
+        """
+        effective_user_id = user_id or self.default_user_id
+        
+        try:
+            status = {}
+            
+            # テキストメモリスケジューラーの状態
+            if self.text_memory_scheduler:
+                scheduler_status = self.text_memory_scheduler.get_scheduler_status()
+                status["text_memory_scheduler"] = scheduler_status
+            else:
+                status["text_memory_scheduler"] = {"available": False}
+            
+            # 自動最適化スケジューラーの状態
+            if self.optimization_scheduler:
+                optimization_status = self.optimization_scheduler.get_scheduler_status()
+                status["optimization_scheduler"] = optimization_status
+            else:
+                status["optimization_scheduler"] = {"available": False}
+            
+            # ワーキングメモリの状態
+            if self.text_memory_scheduler:
+                try:
+                    working_memory_status = self.text_memory_scheduler.get_working_memory_status(effective_user_id)
+                    status["working_memory"] = working_memory_status
+                except Exception as e:
+                    status["working_memory"] = {"error": str(e)}
+            else:
+                status["working_memory"] = {"available": False}
+            
+            return status
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get optimization status for user {effective_user_id}: {e}")
+            return {"error": str(e)}
+    
+    def analyze_memory(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+        """記憶分析API
+        
+        Args:
+            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
+            
+        Returns:
+            Dict[str, Any]: 記憶分析結果
+        """
+        effective_user_id = user_id or self.default_user_id
+        
+        if not self.text_memory_scheduler:
+            return {"error": "Text memory scheduler not available"}
+        
+        try:
+            # ワーキングメモリ状態
+            working_memory_status = self.text_memory_scheduler.get_working_memory_status(effective_user_id)
+            
+            # 重複検出
+            duplicate_analysis = self.text_memory_scheduler.detect_duplicate_memories(effective_user_id)
+            
+            # 品質分析
+            quality_analysis = self.text_memory_scheduler.analyze_memory_quality(effective_user_id)
+            
+            return {
+                "user_id": effective_user_id,
+                "timestamp": datetime.now().isoformat(),
+                "working_memory_status": working_memory_status,
+                "duplicate_analysis": duplicate_analysis,
+                "quality_analysis": quality_analysis
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Memory analysis failed for user {effective_user_id}: {e}")
+            return {"error": str(e)}
+    
+    def force_optimization(
+        self, 
+        user_id: Optional[str] = None, 
+        optimization_type: str = "full"
+    ) -> Dict[str, Any]:
+        """強制最適化トリガーAPI
+        
+        Args:
+            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
+            optimization_type: 最適化タイプ
+            
+        Returns:
+            Dict[str, Any]: 操作結果
+        """
+        effective_user_id = user_id or self.default_user_id
+        
+        if not self.optimization_scheduler:
+            return {"success": False, "error": "Optimization scheduler not available"}
+        
+        try:
+            self.optimization_scheduler.force_optimization(effective_user_id, optimization_type)
+            
+            return {
+                "success": True,
+                "message": f"Forced optimization scheduled for user {effective_user_id}",
+                "optimization_type": optimization_type,
+                "user_id": effective_user_id
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Force optimization failed for user {effective_user_id}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def reset_memory_count(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+        """記憶カウントリセットAPI
+        
+        Args:
+            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
+            
+        Returns:
+            Dict[str, Any]: 操作結果
+        """
+        effective_user_id = user_id or self.default_user_id
+        
+        if not self.optimization_scheduler:
+            return {"success": False, "error": "Optimization scheduler not available"}
+        
+        try:
+            self.optimization_scheduler.reset_user_memory_count(effective_user_id)
+            
+            return {
+                "success": True,
+                "message": f"Memory count reset for user {effective_user_id}",
+                "user_id": effective_user_id
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Reset memory count failed for user {effective_user_id}: {e}")
+            return {"success": False, "error": str(e)}
             self.logger.warning("Memory features may be temporarily disabled")
     
     def search_memory(self, query: str, user_id: Optional[str] = None) -> Dict[str, Any]:

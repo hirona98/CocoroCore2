@@ -57,6 +57,9 @@ class TextMemorySchedulerManager:
         self.is_initialized = False
         self.is_running = False
         
+        # Phase 3: OptimizationSchedulerとの連携用
+        self.optimization_scheduler: Optional["OptimizationScheduler"] = None
+        
         # MemOSライブラリの利用可能性をチェック
         if _memos_import_error is not None:
             raise ImportError(f"MemOSライブラリが利用できません: {_memos_import_error}")
@@ -211,74 +214,7 @@ class TextMemorySchedulerManager:
         except Exception as e:
             self.logger.error(f"Failed to submit answer message: {e}")
     
-    def submit_add_message(self, user_id: str, content: str, mem_cube: "GeneralMemCube"):
-        """記憶追加メッセージを送信
-        
-        Args:
-            user_id: ユーザーID
-            content: 記憶内容
-            mem_cube: メモリキューブ
-        """
-        if not self.is_running:
-            self.logger.warning("Scheduler is not running, skipping add message")
-            return
-        
-        if ScheduleMessageItem is None:
-            self.logger.error("MemOS library not available, cannot submit message")
-            return
-        
-        try:
-            # 記憶追加メッセージは配列形式で送信
-            import json
-            content_array = [content]
-            
-            message = ScheduleMessageItem(
-                user_id=user_id,
-                mem_cube_id=mem_cube.config.cube_id,
-                label=ADD_LABEL,
-                mem_cube=mem_cube,
-                content=json.dumps(content_array),
-                timestamp=datetime.now()
-            )
-            
-            self.scheduler.submit_messages(message)
-            self.logger.debug(f"Submitted add message: {content[:50]}...")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to submit add message: {e}")
     
-    def get_scheduler_status(self) -> Dict[str, Any]:
-        """スケジューラーステータスを取得
-        
-        Returns:
-            Dict[str, Any]: ステータス情報
-        """
-        status = {
-            "initialized": self.is_initialized,
-            "running": self.is_running,
-            "enabled": self.config.mem_scheduler.enabled,
-            "memos_available": _memos_import_error is None,
-            "configuration": {
-                "top_k": self.config.mem_scheduler.top_k,
-                "context_window_size": self.config.mem_scheduler.context_window_size,
-                "enable_act_memory_update": self.config.mem_scheduler.enable_act_memory_update,
-                "enable_parallel_dispatch": self.config.mem_scheduler.enable_parallel_dispatch,
-                "thread_pool_max_workers": self.config.mem_scheduler.thread_pool_max_workers,
-                "consume_interval_seconds": self.config.mem_scheduler.consume_interval_seconds,
-                "text_memory_optimization": self.config.mem_scheduler.text_memory_optimization
-            }
-        }
-        
-        if self.is_running and self.scheduler:
-            try:
-                # スケジューラーログを取得
-                scheduler_logs = self.scheduler.get_web_log_messages()
-                status["recent_logs_count"] = len(scheduler_logs)
-            except Exception as e:
-                self.logger.warning(f"Failed to get scheduler logs: {e}")
-                status["recent_logs_count"] = -1
-        
-        return status
     
     def get_scheduler_logs(self) -> list:
         """スケジューラーログを取得
@@ -1180,6 +1116,109 @@ class TextMemorySchedulerManager:
             self.logger.error(f"Failed to generate quality improvement suggestions: {e}")
         
         return suggestions
+
+    # ===========================================
+    # Phase 3: OptimizationScheduler連携機能
+    # ===========================================
+    
+    def set_optimization_scheduler(self, optimization_scheduler: "OptimizationScheduler"):
+        """OptimizationSchedulerとの連携を設定
+        
+        Args:
+            optimization_scheduler: 最適化スケジューラーインスタンス
+        """
+        self.optimization_scheduler = optimization_scheduler
+        self.logger.info("OptimizationScheduler integration configured")
+    
+    def submit_add_message(self, user_id: str, content: str, mem_cube: "GeneralMemCube"):
+        """記憶追加メッセージを送信（Phase 3拡張版）
+        
+        Args:
+            user_id: ユーザーID
+            content: 記憶内容
+            mem_cube: メモリキューブ
+        """
+        if not self.is_running:
+            self.logger.warning("Scheduler is not running, skipping add message")
+            return
+        
+        if ScheduleMessageItem is None:
+            self.logger.error("MemOS library not available, cannot submit message")
+            return
+        
+        try:
+            # 記憶追加メッセージは配列形式で送信
+            import json
+            content_array = [content]
+            
+            message = ScheduleMessageItem(
+                user_id=user_id,
+                mem_cube_id=mem_cube.config.cube_id,
+                label=ADD_LABEL,
+                mem_cube=mem_cube,
+                content=json.dumps(content_array),
+                timestamp=datetime.now()
+            )
+            
+            self.scheduler.submit_messages(message)
+            self.logger.debug(f"Submitted add message: {content[:50]}...")
+            
+            # Phase 3: 自動最適化スケジューラーに通知（二重通知を避けるために条件チェック）
+            if (self.optimization_scheduler and 
+                self.config.mem_scheduler.enable_auto_optimization and
+                hasattr(self.optimization_scheduler, 'notify_memory_added')):
+                try:
+                    self.optimization_scheduler.notify_memory_added(user_id)
+                    self.logger.debug(f"Notified optimization scheduler from submit_add_message for user {user_id}")
+                except Exception as e:
+                    self.logger.error(f"Failed to notify optimization scheduler from submit_add_message: {e}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to submit add message: {e}")
+    
+    def get_scheduler_status(self) -> Dict[str, Any]:
+        """スケジューラーステータスを取得（Phase 3拡張版）
+        
+        Returns:
+            Dict[str, Any]: ステータス情報
+        """
+        status = {
+            "initialized": self.is_initialized,
+            "running": self.is_running,
+            "enabled": self.config.mem_scheduler.enabled,
+            "memos_available": _memos_import_error is None,
+            "configuration": {
+                "top_k": self.config.mem_scheduler.top_k,
+                "context_window_size": self.config.mem_scheduler.context_window_size,
+                "enable_act_memory_update": self.config.mem_scheduler.enable_act_memory_update,
+                "enable_parallel_dispatch": self.config.mem_scheduler.enable_parallel_dispatch,
+                "thread_pool_max_workers": self.config.mem_scheduler.thread_pool_max_workers,
+                "consume_interval_seconds": self.config.mem_scheduler.consume_interval_seconds,
+                "text_memory_optimization": self.config.mem_scheduler.text_memory_optimization
+            }
+        }
+        
+        # Phase 3: 最適化スケジューラーの状態を追加
+        if self.optimization_scheduler:
+            try:
+                optimization_status = self.optimization_scheduler.get_scheduler_status()
+                status["optimization_scheduler"] = optimization_status
+            except Exception as e:
+                self.logger.warning(f"Failed to get optimization scheduler status: {e}")
+                status["optimization_scheduler"] = {"error": str(e)}
+        else:
+            status["optimization_scheduler"] = {"available": False}
+        
+        if self.is_running and self.scheduler:
+            try:
+                # スケジューラーログを取得
+                scheduler_logs = self.scheduler.get_web_log_messages()
+                status["recent_logs_count"] = len(scheduler_logs)
+            except Exception as e:
+                self.logger.warning(f"Failed to get scheduler logs: {e}")
+                status["recent_logs_count"] = -1
+        
+        return status
 
     def cleanup(self):
         """リソースをクリーンアップ"""
