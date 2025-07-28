@@ -89,6 +89,27 @@ class SessionConfig(BaseModel):
     cleanup_interval_seconds: int = 30
 
 
+class MemSchedulerConfig(BaseModel):
+    """メモリスケジューラー設定"""
+    enabled: bool = False
+    top_k: int = 5
+    context_window_size: int = 5
+    enable_act_memory_update: bool = False
+    enable_parallel_dispatch: bool = False
+    thread_pool_max_workers: int = 3
+    consume_interval_seconds: int = 2
+    act_mem_update_interval: int = 300
+    
+    # テキストメモリ特化設定
+    text_memory_optimization: Dict[str, Any] = Field(default_factory=lambda: {
+        "enable_deduplication": True,
+        "similarity_threshold": 0.95,
+        "working_memory_size": 20,
+        "long_term_memory_capacity": 10000,
+        "user_memory_capacity": 10000
+    })
+
+
 class CocoroCore2Config(BaseModel):
     """CocoroCore2統合設定"""
     version: str = "2.0.0"
@@ -101,6 +122,7 @@ class CocoroCore2Config(BaseModel):
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
+    mem_scheduler: MemSchedulerConfig = Field(default_factory=MemSchedulerConfig)
 
     @classmethod
     def load(cls, config_path: Optional[str] = None, environment: str = "development") -> "CocoroCore2Config":

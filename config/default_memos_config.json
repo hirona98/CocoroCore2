@@ -43,5 +43,22 @@
   "top_k": 5,
   "enable_textual_memory": true,
   "enable_activation_memory": false,
-  "enable_parametric_memory": false
+  "enable_parametric_memory": false,
+  "mem_scheduler": {
+    "enabled": true,
+    "top_k": 5,
+    "context_window_size": 5,
+    "enable_act_memory_update": false,
+    "enable_parallel_dispatch": false,
+    "thread_pool_max_workers": 3,
+    "consume_interval_seconds": 2,
+    "act_mem_update_interval": 300,
+    "text_memory_optimization": {
+      "enable_deduplication": true,
+      "similarity_threshold": 0.95,
+      "working_memory_size": 20,
+      "long_term_memory_capacity": 10000,
+      "user_memory_capacity": 10000
+    }
+  }
 }
