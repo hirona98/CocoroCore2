@@ -100,8 +100,6 @@ class Neo4jManager:
                 await self._stop_process()
                 return False
             
-            # 5. データベース初期化は不要（Community Editionでは単一DBのみ）
-            
             logger.info("組み込みNeo4jサービスの起動が完了しました")
             return True
             
@@ -242,113 +240,40 @@ class Neo4jManager:
             return True  # エラー時は起動を試行
     
     async def _start_neo4j_process(self) -> bool:
-        """Neo4jプロセスを起動
+        """Neo4jをconsoleモードで起動
         
         Returns:
             bool: 起動成功時True
         """
         try:
-            # Neo4j専用の起動スクリプト使用
-            if sys.platform == "win32":
-                neo4j_cmd = self.neo4j_home / "bin" / "neo4j.bat"
-                if not neo4j_cmd.exists():
-                    # Windowsバッチファイルが見つからない場合は直接Javaを使用
-                    return await self._start_neo4j_with_java()
+            # Neo4jスクリプト確認（Windows専用）
+            neo4j_cmd = self.neo4j_home / "bin" / "neo4j.bat"
                 
-                # Neo4jバッチスクリプト起動
-                cmd = [str(neo4j_cmd), "console"]
-                
-            else:
-                neo4j_cmd = self.neo4j_home / "bin" / "neo4j"
-                if not neo4j_cmd.exists():
-                    # Linuxスクリプトが見つからない場合は直接Javaを使用
-                    return await self._start_neo4j_with_java()
-                
-                # Neo4jシェルスクリプト起動
-                cmd = [str(neo4j_cmd), "console"]
-            
-            logger.info(f"Neo4j起動コマンド: {' '.join(cmd)}")
-            
-            # プロセス起動
-            env = os.environ.copy()
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=None,  # 現在のディレクトリから実行
-                env=env
-            )
-            
-            logger.info(f"Neo4jプロセス起動: PID={self.process.pid}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Neo4jプロセス起動エラー: {e}")
-            # フォールバック: 直接Java起動を試行
-            return await self._start_neo4j_with_java()
-    
-    async def _start_neo4j_with_java(self) -> bool:
-        """Javaを直接使用してNeo4jを起動（フォールバック）
-        
-        Returns:
-            bool: 起動成功時True
-        """
-        try:
-            # Java実行ファイル
-            if sys.platform == "win32":
-                java_exe = self.java_home / "bin" / "java.exe"
-            else:
-                java_exe = self.java_home / "bin" / "java"
-                
-            if not java_exe.exists():
-                logger.error(f"Java実行ファイルが見つかりません: {java_exe}")
+            if not neo4j_cmd.exists():
+                logger.error(f"Neo4jスクリプトが見つかりません: {neo4j_cmd}")
                 return False
             
-            # Neo4jのクラスパス構築
-            neo4j_lib_dir = self.neo4j_home / "lib"
-            jar_files = list(neo4j_lib_dir.glob("*.jar"))
+            # Neo4j console起動
+            console_cmd = [str(neo4j_cmd), "console"]
+            logger.info(f"Neo4j console起動: {' '.join(console_cmd)}")
             
-            if not jar_files:
-                logger.error(f"Neo4j JARファイルが見つかりません: {neo4j_lib_dir}")
-                return False
-            
-            # クラスパス設定
-            classpath = os.pathsep.join([str(jar) for jar in jar_files])
-            
-            # 起動コマンド（Neo4j 5.x用）
-            cmd = [
-                str(java_exe),
-                "-cp", classpath,
-                "-Xmx512m",
-                "-Xms256m",
-                f"-Dneo4j.home={self.neo4j_home}",
-                f"-Dneo4j.conf={self.neo4j_home / 'conf'}",
-                f"-Dneo4j.logs={self.neo4j_home / 'logs'}",
-                f"-Dlog4j.configurationFile={self.neo4j_home / 'conf' / 'server-logs.xml'}",
-                "org.neo4j.server.CommunityEntryPoint",  # Neo4j 5.x メインクラス
-                "--home-dir", str(self.neo4j_home),
-                "--config-dir", str(self.neo4j_home / "conf")
-            ]
-            
-            logger.info(f"Neo4j直接起動コマンド: {' '.join(cmd[:5])}... (省略)")
-            logger.info(f"  - Neo4j Home: {self.neo4j_home}")
-            logger.info(f"  - 使用JAR数: {len(jar_files)}")
-            
-            # プロセス起動
             env = os.environ.copy()
+            
             self.process = subprocess.Popen(
-                cmd,
+                console_cmd,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,  # stderrもstdoutにリダイレクト
+                stderr=subprocess.STDOUT,
                 cwd=str(self.neo4j_home),
-                env=env
+                env=env,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
             )
             
-            logger.info(f"Neo4jプロセス起動（Java直接）: PID={self.process.pid}")
+            logger.info(f"Neo4j console起動: PID={self.process.pid}")
             return True
             
         except Exception as e:
-            logger.error(f"Neo4j直接起動エラー: {e}")
+            logger.error(f"Neo4j console起動エラー: {e}")
             return False
     
     async def _wait_for_startup(self) -> bool:
@@ -368,25 +293,8 @@ class Neo4jManager:
             
             # プロセス生存確認
             if self.process and self.process.poll() is not None:
-                # プロセス終了の詳細情報を取得
                 return_code = self.process.returncode
-                stdout_data = ""
-                stderr_data = ""
-                
-                try:
-                    if self.process.stdout:
-                        stdout_data = self.process.stdout.read().decode('utf-8', errors='ignore')
-                    if self.process.stderr:
-                        stderr_data = self.process.stderr.read().decode('utf-8', errors='ignore')
-                except Exception:
-                    pass
-                
                 logger.error(f"Neo4jプロセスが予期せず終了しました (exit code: {return_code})")
-                if stdout_data:
-                    logger.error(f"STDOUT: {stdout_data[:500]}...")
-                if stderr_data:
-                    logger.error(f"STDERR: {stderr_data[:500]}...")
-                
                 return False
             
             # 接続テスト
@@ -431,39 +339,36 @@ class Neo4jManager:
             return success
             
         except Exception as e:
-            # デバッグ用に詳細エラー情報をログ出力
             logger.debug(f"Neo4j接続テスト失敗: {e}")
             return False
     
     async def _stop_process(self):
-        """Neo4jプロセスを停止"""
-        if not self.process:
-            return
-        
+        """Neo4jプロセスを停止（2秒待機後に強制終了）"""
         logger.info("Neo4jプロセスを停止中...")
         
         try:
-            # 正常終了を試行
-            self.process.terminate()
+            # bat経由の起動なので通常終了は不可正常終了の方法はすべて試したがNG仕方なく強制終了する
+            # バッファフラッシュのため2秒待機（根拠はない。高速化が必要なら消してもOK）
+            logger.info("データベースのバッファフラッシュを待機中...")
+            await asyncio.sleep(2)
             
-            # 終了待機（最大10秒）
-            try:
-                await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None, self.process.wait
-                    ),
-                    timeout=10
-                )
-                logger.info("Neo4jプロセスが正常に終了しました")
-            except asyncio.TimeoutError:
-                # 強制終了
-                logger.warning("Neo4jプロセスを強制終了します")
-                self.process.kill()
-                await asyncio.get_event_loop().run_in_executor(
-                    None, self.process.wait
-                )
-                
+            # 強制終了で確実に停止
+            logger.info("java.exeプロセスを強制終了中...")
+            
+            kill_cmd = ["taskkill", "/F", "/IM", "java.exe"]
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: subprocess.run(kill_cmd, capture_output=True, text=True, encoding='cp932', check=False)
+            )
+            
+            if result.returncode == 0:
+                logger.info("java.exeプロセスの強制終了が成功しました")
+            else:
+                logger.debug(f"java.exe強制終了警告 (exit code: {result.returncode})")
+            
+            logger.info("Neo4jプロセス強制終了が完了しました")
+            
         except Exception as e:
-            logger.error(f"Neo4jプロセス停止エラー: {e}")
+            logger.error(f"強制終了エラー: {e}")
         finally:
             self.process = None
