@@ -35,22 +35,14 @@ class HealthService:
             # HealthCheckResponse形式に変換
             return HealthCheckResponse(
                 status=status["status"],
-                version=status["version"],
-                character=status["character"],
-                memory_enabled=status["memory_enabled"],
                 startup_time=status["startup_time"],
                 active_sessions=session_stats["active_sessions"],
-                memos_status=status.get("memos_status", {}),
-                features=status.get("features", {})
             )
             
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return HealthCheckResponse(
                 status="error",
-                version="2.0.0",
-                character="Unknown",
-                memory_enabled=False,
                 startup_time="",
                 active_sessions=0
             )
@@ -71,24 +63,16 @@ class ControlService:
             if request.command == "shutdown":
                 # システム終了処理
                 return await self._handle_shutdown_command(request.params)
-            
-            elif request.command == "sttControl":
-                # STT制御（将来実装）
-                return await self._handle_stt_control(request.params)
-            
-            elif request.command == "microphoneControl":
-                # マイクロフォン制御（将来実装）
-                return await self._handle_microphone_control(request.params)
-            
+
             elif request.command == "start_log_forwarding":
-                # ログ転送開始（将来実装）
+                # ログ転送開始
                 return {
                     "status": "success",
                     "message": "ログ転送は現在実装されていません"
                 }
             
             elif request.command == "stop_log_forwarding":
-                # ログ転送停止（将来実装）
+                # ログ転送停止
                 return {
                     "status": "success", 
                     "message": "ログ転送は現在実装されていません"
@@ -147,22 +131,6 @@ class ControlService:
         except Exception as e:
             self.logger.error(f"Background shutdown failed: {e}")
     
-    async def _handle_stt_control(self, params: Optional[Dict]) -> Dict:
-        """STT制御処理"""
-        # 将来実装
-        return {
-            "status": "success",
-            "message": "STT制御は現在実装されていません"
-        }
-    
-    async def _handle_microphone_control(self, params: Optional[Dict]) -> Dict:
-        """マイクロフォン制御処理"""
-        # 将来実装
-        return {
-            "status": "success",
-            "message": "マイクロフォン制御は現在実装されていません"
-        }
-
 
 class NotificationService:
     """通知関連サービス"""

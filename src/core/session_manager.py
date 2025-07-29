@@ -1,7 +1,7 @@
 """
 CocoroCore2 Session Manager
 
-セッション管理とタイムアウト処理
+セッション管理とタイムアウト処理(MemOSのユーザー管理)
 """
 
 import asyncio

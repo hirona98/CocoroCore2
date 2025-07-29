@@ -112,13 +112,8 @@ class CoreControlRequest(BaseModel):
 class HealthCheckResponse(BaseModel):
     """ヘルスチェックレスポンス"""
     status: str = Field(description="システム状態")
-    version: str = Field(description="バージョン")
-    character: str = Field(description="キャラクター名")
-    memory_enabled: bool = Field(description="記憶機能有効フラグ")
     startup_time: str = Field(description="起動時刻")
     active_sessions: int = Field(description="アクティブセッション数")
-    memos_status: Dict[str, Any] = Field(description="MemOS状態")
-    features: Dict[str, bool] = Field(description="機能有効状態")
 
 
 # ========================================
@@ -217,24 +212,3 @@ class UnifiedChatResponse(BaseModel):
     session_id: Optional[str] = Field(None, description="セッションID")
     response_length: Optional[int] = Field(None, description="レスポンス文字数")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="タイムスタンプ")
-
-
-# ========================================
-# 音声処理モデル（将来拡張用）
-# ========================================
-
-class VoiceRequest(BaseModel):
-    """音声リクエスト"""
-    session_id: str = Field(description="セッションID")
-    user_id: str = Field(description="ユーザーID")
-    audio_data: str = Field(description="音声データ（Base64）")
-    format: str = Field("wav", description="音声フォーマット")
-    sample_rate: Optional[int] = Field(None, description="サンプリングレート")
-
-
-class VoiceResponse(BaseModel):
-    """音声レスポンス"""
-    text: str = Field(description="認識されたテキスト")
-    confidence: Optional[float] = Field(None, description="信頼度")
-    language: Optional[str] = Field(None, description="認識された言語")
-    duration: Optional[float] = Field(None, description="音声長（秒）")

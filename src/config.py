@@ -14,55 +14,19 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, ValidationError, validator
 
-# MemOS関連インポート（遅延インポートで対応）
-# from memos.configs.mem_os import MOSConfig
-
-
-class ServerConfig(BaseModel):
-    """FastAPIサーバー設定"""
-    host: str = "127.0.0.1"
-    port: int = 55601
-    reload: bool = False
-
-
-class CharacterConfig(BaseModel):
-    """キャラクター設定"""
-    name: str = "つくよみちゃん"
-
-
-class STTConfig(BaseModel):
-    """Speech-To-Text設定"""
-    api_key: Optional[str] = None
-
-
-class SpeechConfig(BaseModel):
-    """音声処理設定"""
-    enabled: bool = True
-    stt: STTConfig = Field(default_factory=STTConfig)
-
-
-class Neo4jSetting(BaseModel):
-    """Neo4j設定"""
-    uri: str = "bolt://127.0.0.1:7687"
-    user: str = "neo4j"
-    password: str = "12345678"
-    db_name: str = "neo4j"
-    embedding_dimension: int = 3072
-    embedded_enabled: bool = True
-    java_home: str = "jre"
-    neo4j_home: str = "neo4j"
-    startup_timeout: int = 60
-
-
-class ShellIntegrationConfig(BaseModel):
-    """CocoroShell統合設定"""
-    enabled: bool = True
-
-
-class MCPConfig(BaseModel):
-    """Model Context Protocol設定"""
-    enabled: bool = True
-
+class CharacterData(BaseModel):
+    """キャラクター設定データ"""
+    isReadOnly: bool = False
+    modelName: str = "つくよみちゃん"
+    isUseLLM: bool = False
+    apiKey: str = ""
+    llmModel: str = "gemini/gemini-2.0-flash"
+    localLLMBaseUrl: str = ""
+    systemPromptFilePath: str = ""
+    isEnableMemory: bool = False
+    userId: str = ""
+    embeddedApiKey: str = ""
+    embeddedModel: str = "ollama/nomic-embed-text"
 
 class LoggingConfig(BaseModel):
     """ログ設定"""
@@ -72,19 +36,38 @@ class LoggingConfig(BaseModel):
     backup_count: int = 5
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+class CocoroAIConfig(BaseModel):
+    """CocoroAI統合設定（Setting.json形式）"""
+    cocoroDockPort: int = 55600
+    cocoroCorePort: int = 55601
+    cocoroMemoryPort: int = 55602
+    cocoroMemoryDBPort: int = 55603
+    cocoroShellPort: int = 55605
+    isEnableMcp: bool = True
 
-class CocoroCore2Config(BaseModel):
-    """CocoroCore2統合設定"""
-    version: str = "2.0.0"
-    server: ServerConfig = Field(default_factory=ServerConfig)
-    character: CharacterConfig = Field(default_factory=CharacterConfig)
-    speech: SpeechConfig = Field(default_factory=SpeechConfig)
-    shell_integration: ShellIntegrationConfig = Field(default_factory=ShellIntegrationConfig)
-    mcp: MCPConfig = Field(default_factory=MCPConfig)
+    # キャラクター設定
+    currentCharacterIndex: int = 0
+    characterList: list[CharacterData] = Field(default_factory=list)
+    
+    # CocoroCore2用の追加設定
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    
+    @property
+    def current_character(self) -> Optional[CharacterData]:
+        """現在選択されているキャラクターを取得"""
+        if 0 <= self.currentCharacterIndex < len(self.characterList):
+            return self.characterList[self.currentCharacterIndex]
+        return None
+    
+    
+    @property
+    def character_name(self) -> str:
+        """現在のキャラクター名"""
+        char = self.current_character
+        return char.modelName if char else "つくよみちゃん"
 
     @classmethod
-    def load(cls, config_path: Optional[str] = None, environment: str = "development") -> "CocoroCore2Config":
+    def load(cls, config_path: Optional[str] = None, environment: str = "development") -> "CocoroAIConfig":
         """設定ファイルから設定を読み込む
         
         Args:
@@ -92,7 +75,7 @@ class CocoroCore2Config(BaseModel):
             environment: 環境名（development/production）
             
         Returns:
-            CocoroCore2Config: 設定オブジェクト
+            CocoroAIConfig: 設定オブジェクト
         """
         if config_path is None:
             config_path = find_config_file(environment)
@@ -103,9 +86,6 @@ class CocoroCore2Config(BaseModel):
         
         # 環境変数置換
         config_data = substitute_env_variables(config_data)
-        
-        # 設定の検証・補完
-        config_data = validate_and_complete_config(config_data)
         
         try:
             return cls(**config_data)
@@ -129,11 +109,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def find_config_file(environment: str = "development") -> str:
-    """CocoroCore2設定ファイルを自動検索する
+    """CocoroAI設定ファイルを自動検索する
     
     検索順序:
-    1. ../UserData2/CocoroSetting.json (ユーザー設定）
-    2. ./config/CocoroSetting.json (デフォルト設定)
+    1. ../UserData2/Setting.json (統合設定ファイル)
     
     Args:
         environment: 環境名
@@ -152,17 +131,13 @@ def find_config_file(environment: str = "development") -> str:
         # 通常のPythonスクリプトとして実行された場合
         base_dir = Path(__file__).parent.parent
     
-    # 検索パスのリスト
-    search_paths = [
-        base_dir.parent / "UserData2" / "CocoroSetting.json",  # ユーザー設定（優先）
-        base_dir / "config" / "CocoroSetting.json",           # デフォルト設定
-    ]
+    # Setting.jsonのパス
+    config_path = base_dir.parent / "UserData2" / "Setting.json"
     
-    for path in search_paths:
-        if path.exists():
-            return str(path)
+    if config_path.exists():
+        return str(config_path)
     
-    raise ConfigurationError(f"CocoroCore2設定ファイルが見つかりません。検索パス: {[str(p) for p in search_paths]}")
+    raise ConfigurationError(f"Setting.jsonが見つかりません。パス: {config_path}")
 
 
 def substitute_env_variables(data: Any) -> Any:
@@ -270,53 +245,6 @@ def load_neo4j_config() -> Dict[str, Any]:
     raise ConfigurationError(f"Neo4j設定ファイルが見つかりません。検索パス: {[str(p) for p in search_paths]}")
 
 
-def validate_and_complete_config(config_data: Dict[str, Any]) -> Dict[str, Any]:
-    """設定の検証と補完を行う
-    
-    Args:
-        config_data: 設定データ
-        
-    Returns:
-        Dict[str, Any]: 検証・補完済み設定データ
-        
-    Raises:
-        ConfigurationError: 必須設定が不足している場合
-    """
-    # 設定の基本的な検証のみ
-    return config_data
-
-
-def load_legacy_config(config_dir: Optional[str] = None) -> Dict[str, Any]:
-    """既存のCocoroAI設定ファイル（setting.json）を読み込む
-    
-    互換性のためのヘルパー関数
-    
-    Args:
-        config_dir: 設定ディレクトリパス
-        
-    Returns:
-        Dict[str, Any]: 設定データ
-    """
-    if config_dir:
-        config_path = Path(config_dir) / "setting.json"
-    else:
-        # 実行ディレクトリの決定
-        if getattr(sys, "frozen", False):
-            base_dir = Path(sys.executable).parent
-        else:
-            base_dir = Path(__file__).parent.parent.parent
-        
-        config_path = base_dir / "UserData2" / "setting.json"
-    
-    if not config_path.exists():
-        raise ConfigurationError(f"CocoroAI設定ファイルが見つかりません: {config_path}")
-    
-    with open(config_path, "r", encoding="utf-8") as f:
-        config_data = json.load(f)
-    
-    return substitute_env_variables(config_data)
-
-
 def create_mos_config_from_dict(mos_config_dict: Dict[str, Any]):
     """辞書からMOSConfigオブジェクトを作成する
     
@@ -367,11 +295,11 @@ def load_mos_config_from_file(config_path: str):
         raise ConfigurationError(f"MOSConfig読み込みに失敗しました: {e}")
 
 
-def get_mos_config(config: "CocoroCore2Config" = None):
+def get_mos_config(config: "CocoroAIConfig" = None):
     """MOSConfigオブジェクトを取得する
     
     Args:
-        config: CocoroCore2設定オブジェクト（使用しない、互換性のため）
+        config: CocoroAI設定オブジェクト（使用しない、互換性のため）
         
     Returns:
         MOSConfig: MOSConfigオブジェクト

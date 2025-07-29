@@ -18,11 +18,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import uvicorn
 
 from src.app import app
-from src.config import CocoroCore2Config, parse_args, ConfigurationError
+from src.config import CocoroAIConfig, parse_args, ConfigurationError
 
 
 # ログ設定
-def setup_logging(config: CocoroCore2Config):
+def setup_logging(config: CocoroAIConfig):
     """ログ設定を初期化"""
     
     # ログディレクトリ作成
@@ -95,7 +95,7 @@ def setup_signal_handlers():
         signal.signal(signal.SIGBREAK, signal_handler)
 
 
-def setup_api_keys_from_config(config: CocoroCore2Config):
+def setup_api_keys_from_config(config: CocoroAIConfig):
     """設定ファイルからAPIキーを環境変数に設定"""
     try:
         # MemOS設定から OpenAI APIキーを取得
@@ -118,12 +118,6 @@ def setup_api_keys_from_config(config: CocoroCore2Config):
             os.environ["OPENAI_API_KEY"] = mem_llm_api_key
             return True
         
-        # speech.stt の APIキー
-        speech_stt_config = config.speech.stt
-        if hasattr(speech_stt_config, 'api_key') and speech_stt_config.api_key:
-            if speech_stt_config.api_key.startswith("sk-"):
-                os.environ["OPENAI_API_KEY"] = speech_stt_config.api_key
-                return True
         
     except Exception as e:
         pass
@@ -131,18 +125,18 @@ def setup_api_keys_from_config(config: CocoroCore2Config):
     return False
 
 
-async def run_server(config: CocoroCore2Config):
+async def run_server(config: CocoroAIConfig):
     """FastAPIサーバーを起動"""
     logger = logging.getLogger(__name__)
     
     # uvicorn設定
     uvicorn_config = uvicorn.Config(
         app=app,
-        host=config.server.host,
-        port=config.server.port,
+        host="127.0.0.1",
+        port=config.cocoroCorePort,
         log_level=config.logging.level.lower(),
         access_log=False,  # 独自のログ設定を使用
-        reload=config.server.reload,
+        reload=False,
         workers=1,  # lifespanとの互換性のため常に1
     )
     
@@ -156,7 +150,7 @@ async def run_server(config: CocoroCore2Config):
     shutdown_task = asyncio.create_task(shutdown_event.wait())
     
     try:
-        logger.info(f"CocoroCore2 starting on {config.server.host}:{config.server.port}")
+        logger.info(f"CocoroCore2 starting on 127.0.0.1:{config.cocoroCorePort}")
         
         # サーバー開始または終了シグナル待機
         done, pending = await asyncio.wait(
@@ -186,7 +180,7 @@ async def run_server(config: CocoroCore2Config):
         logger.info("CocoroCore2 server stopped")
 
 
-def check_environment(config: CocoroCore2Config):
+def check_environment(config: CocoroAIConfig):
     """実行環境をチェック"""
     logger = logging.getLogger(__name__)
     
@@ -205,7 +199,7 @@ def check_environment(config: CocoroCore2Config):
     logger.info(f"Working directory: {os.getcwd()}")
 
 
-def print_banner(config: CocoroCore2Config):
+def print_banner(config: CocoroAIConfig):
     """起動バナーを表示"""
     banner = f"""
 //////////////////////////////////////////////////////////
@@ -213,7 +207,7 @@ def print_banner(config: CocoroCore2Config):
                      CocoroCore2
        CocoroAI Backend Version 2 MemOS Unified
 
-    Ready for CocoroDock & CocoroShell {config.server.host}:{config.server.port:<25}
+    Ready for CocoroDock & CocoroShell 127.0.0.1:{config.cocoroCorePort:<25}
   ** ログ出力文字化け防止の為 -X utf8 オプション必須 **
        
 //////////////////////////////////////////////////////////
@@ -230,10 +224,10 @@ async def main():
         # 設定読み込み
         try:
             if args.config_file:
-                config = CocoroCore2Config.load(args.config_file, args.environment)
+                config = CocoroAIConfig.load(args.config_file, args.environment)
                 print(f"設定ファイル読み込み: {args.config_file}")
             else:
-                config = CocoroCore2Config.load(environment=args.environment)
+                config = CocoroAIConfig.load(environment=args.environment)
                 from src.config import find_config_file
                 config_path = find_config_file(args.environment)
                 print(f"設定ファイル読み込み: {config_path}")

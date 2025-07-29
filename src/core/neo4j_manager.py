@@ -343,12 +343,12 @@ class Neo4jManager:
             return False
     
     async def _stop_process(self):
-        """Neo4jプロセスを停止（2秒待機後に強制終了）"""
+        """Neo4jプロセスを停止（1秒待機後に強制終了）"""
         logger.info("Neo4jプロセスを停止中...")
         
         try:
             # bat経由の起動なので通常終了は不可正常終了の方法はすべて試したがNG仕方なく強制終了する
-            # バッファフラッシュのため2秒待機（根拠はない。高速化が必要なら消してもOK）
+            # バッファフラッシュのため1秒待機（根拠はない。高速化が必要なら消してもOK）
             logger.info("データベースのバッファフラッシュを待機中...")
             await asyncio.sleep(2)
             

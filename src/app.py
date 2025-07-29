@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from .config import CocoroCore2Config
+from .config import CocoroAIConfig
 from .core_app import CocoroCore2App
 from .core.session_manager import SessionManager
 
@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     
     try:
         # 設定読み込み
-        config = CocoroCore2Config.load()
+        config = CocoroAIConfig.load()
         
         # コアアプリケーション初期化
         app_instance = CocoroCore2App(config)
@@ -66,7 +66,6 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="CocoroCore2",
         description="CocoroAI Unified Backend with MemOS Integration",
-        version="2.0.0",
         lifespan=lifespan,
     )
     
@@ -91,12 +90,10 @@ def create_app() -> FastAPI:
             status = app_instance.get_app_status()
             return {
                 "message": "CocoroCore2 - MemOS Unified Backend",
-                "version": "2.0.0",
                 "status": status
             }
         return {
             "message": "CocoroCore2 - MemOS Unified Backend", 
-            "version": "2.0.0",
             "status": "initializing"
         }
     

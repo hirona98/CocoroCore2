@@ -10,43 +10,35 @@ from typing import Any, Dict, Optional
 
 from memos.mem_os.main import MOS
 
-from config import CocoroCore2Config, get_mos_config, load_memos_config, load_neo4j_config
+from config import CocoroAIConfig, get_mos_config, load_memos_config, load_neo4j_config
 from .core.neo4j_manager import Neo4jManager
 
 
 class CocoroCore2App:
-    """正規版MOSを使用したCocoroCore2メインアプリケーション"""
+    """MOSを使用したCocoroCore2メインアプリケーション"""
     
-    def __init__(self, config: CocoroCore2Config):
+    def __init__(self, config: CocoroAIConfig):
         """初期化
         
         Args:
-            config: CocoroCore2設定
+            config: CocoroAI設定
         """
         self.config = config
         self.logger = logging.getLogger(__name__)
         
-        # 正規版MOS用の環境変数設定
+        # MOS用の環境変数設定
         self._setup_memos_environment()
         
-        # 正規版MOS初期化
+        # MOS初期化
         try:
             # MOSConfig作成
-            mos_config = get_mos_config(config)
+            mos_config = get_mos_config()
             self.mos = MOS(mos_config)
             
             # デフォルトユーザーID設定
             memos_config_data = load_memos_config()
             self.default_user_id = memos_config_data.get("user_id", "default")
-            
-            # デフォルトシステムプロンプト設定（キャラクター別）
-            self.default_system_prompts = {
-                "ココロ": "あなたは「ココロ」という名前のバーチャルアシスタントです。明るく元気で、ユーザーを励まし、サポートすることが大好きです。敬語を使いながらも親しみやすい話し方をします。",
-                "さくら": "あなたは「さくら」という名前のバーチャルアシスタントです。落ち着いていて優しく、ユーザーの気持ちに寄り添うような話し方をします。丁寧で上品な言葉遣いを心がけています。",
-                "みらい": "あなたは「みらい」という名前のバーチャルアシスタントです。好奇心旺盛で前向き、新しいことにチャレンジするのが好きです。フレンドリーでカジュアルな話し方をします。"
-            }
-            
-            self.logger.info(f"正規版MOS initialized successfully with user_id: {self.default_user_id}")
+            self.logger.info(f"MOS initialized successfully with user_id: {self.default_user_id}")
         except Exception as e:
             self.logger.error(f"Failed to initialize MOS: {e}")
             raise
@@ -77,7 +69,7 @@ class CocoroCore2App:
         self.logger.info("CocoroCore2App initialized with full MOS integration")
     
     def _setup_memos_environment(self):
-        """正規版MOS用の環境変数を設定する"""
+        """MOS用の環境変数を設定する"""
         try:
             # 設定ファイルからAPIキーを取得
             memos_config_data = load_memos_config()
@@ -202,17 +194,6 @@ class CocoroCore2App:
                 self.logger.info("Retrying MemCube creation...")
                 self._ensure_user_memcube(self.default_user_id)
             
-            # 音声処理パイプラインの初期化（将来実装）
-            if self.config.speech.enabled:
-                self.logger.info("Speech processing is enabled")
-                # await self.voice_pipeline.initialize()
-            
-            # MCP統合の初期化（将来実装）
-            if self.config.mcp.enabled:
-                self.logger.info("MCP integration is enabled")
-                # await self.mcp_tools.initialize()
-            
-            
             self.is_running = True
             self.logger.info("CocoroCore2App startup completed")
             
@@ -246,14 +227,6 @@ class CocoroCore2App:
                 self.logger.info("MemCube persistence completed")
             except Exception as e:
                 self.logger.error(f"Failed to persist MemCubes: {e}")
-            
-            # 各コンポーネントのクリーンアップ
-            
-            # 音声処理パイプラインのクリーンアップ（将来実装）
-            # await self.voice_pipeline.cleanup()
-            
-            # MCP統合のクリーンアップ（将来実装）
-            # await self.mcp_tools.cleanup()
             
             # Neo4j組み込みサービス停止（最後に実行：dump完了後）
             if self.neo4j_manager:
@@ -309,21 +282,11 @@ class CocoroCore2App:
             # 有効なユーザーIDを決定
             effective_user_id = user_id or self.default_user_id
             
-            # システムプロンプトを決定（指定されていない場合はキャラクター別のデフォルトを使用）
-            if system_prompt:
-                effective_system_prompt = system_prompt
-            else:
-                character_name = self.config.character.name
-                effective_system_prompt = self.default_system_prompts.get(
-                    character_name,
-                    f"あなたは「{character_name}」という名前のバーチャルアシスタントです。"
-                )
-            
             # システムプロンプトをqueryに追加
-            full_query = f"{effective_system_prompt}\n\n{query}"
+            full_query = f"{system_prompt}\n\n{query}"
             
             
-            # 正規版MOSでのチャット処理
+            # MOSでのチャット処理
             response = self.mos.chat(query=full_query, user_id=effective_user_id)
             
             # 会話全体を記憶として保存（messagesフォーマット）
@@ -365,7 +328,7 @@ class CocoroCore2App:
                 {"role": "assistant", "content": "了解しました。この情報を記憶します。"}
             ]
             
-            # 正規版MOSAPIで記憶追加（messagesフォーマットを使用）
+            # MOSAPIで記憶追加（messagesフォーマットを使用）
             self.mos.add(messages=messages, user_id=effective_user_id)
             
             
@@ -374,10 +337,6 @@ class CocoroCore2App:
         except Exception as e:
             self.logger.error(f"Failed to add memory: {e}")
             # メモリ保存の失敗はチャット機能全体を停止させない
-
-    # ===========================================
-    # Phase 3: 最適化API機能
-    # ===========================================
     
     async def optimize_memory(
         self, 
@@ -413,9 +372,6 @@ class CocoroCore2App:
             return {"success": False, "error": str(e)}
     
     
-    
-    
-    
     def search_memory(self, query: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """記憶検索（同期）
         
@@ -430,7 +386,7 @@ class CocoroCore2App:
             # 有効なユーザーIDを決定
             effective_user_id = user_id or self.default_user_id
             
-            # 正規版MOSAPIで検索
+            # MOSAPIで検索
             result = self.mos.search(query=query, user_id=effective_user_id)
             
             self.logger.debug(f"Memory search completed: {len(str(result))} characters")
@@ -453,7 +409,7 @@ class CocoroCore2App:
             # 有効なユーザーIDを決定
             effective_user_id = user_id or self.default_user_id
             
-            # 正規版MOSAPIで全記憶取得
+            # MOSAPIで全記憶取得
             result = self.mos.get_all(user_id=effective_user_id)
             
             self.logger.debug("Retrieved all memories")
@@ -685,9 +641,6 @@ class CocoroCore2App:
             
             status = {
                 "status": "healthy" if self.is_running else "stopped",
-                "version": self.config.version,
-                "character": self.config.character.name,
-                "memory_enabled": True,
                 "memory_type": "MemOS Full",
                 "startup_time": self.startup_time.isoformat(),
                 "active_sessions": active_sessions,
@@ -696,11 +649,6 @@ class CocoroCore2App:
                     "backend": "configurable",
                     "default_user_id": self.default_user_id,
                     "sessions": active_sessions,
-                },
-                "features": {
-                    "speech_enabled": self.config.speech.enabled,
-                    "mcp_enabled": self.config.mcp.enabled,
-                    "shell_integration": self.config.shell_integration.enabled,
                 }
             }
             
@@ -712,5 +660,4 @@ class CocoroCore2App:
             return {
                 "status": "error",
                 "error": str(e),
-                "version": self.config.version,
             }
