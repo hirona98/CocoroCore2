@@ -57,43 +57,7 @@ class SpeechConfig(BaseModel):
     stt: STTConfig = Field(default_factory=STTConfig)
 
 
-class Neo4jConfig(BaseModel):
-    """Neo4j接続設定"""
-    uri: str = "bolt://localhost:7687"
-    user: str = "neo4j"
-    password: str = "12345678"  # 開発環境デフォルト
-    db_name: str = "neo4j"
-    embedding_dimension: int = 3072  # text-embedding-3-large
-    
-    # 組み込みNeo4j設定
-    embedded_enabled: bool = True  # PyInstaller実行時の組み込みモード
-    java_home: str = "jre"  # JREディレクトリ（相対パス）
-    neo4j_home: str = "neo4j"  # Neo4jディレクトリ（相対パス）
-    startup_timeout: int = 60  # 起動タイムアウト（秒）
-    
-    @validator('password')
-    def validate_password(cls, v):
-        """パスワード検証"""
-        if not v or v == "changeme":
-            # 環境変数から取得を試みる
-            neo4j_password = os.environ.get("NEO4J_PASSWORD")
-            if neo4j_password:
-                return neo4j_password
-            # デフォルトパスワードの警告
-            import logging
-            logging.getLogger(__name__).warning(
-                "Using default Neo4j password. Please set NEO4J_PASSWORD environment variable."
-            )
-        return v
-    
-    @validator('startup_timeout')
-    def validate_startup_timeout(cls, v):
-        """起動タイムアウト検証"""
-        if v < 10:
-            raise ValueError("startup_timeout must be at least 10 seconds")
-        if v > 300:
-            raise ValueError("startup_timeout must not exceed 300 seconds")
-        return v
+# Neo4jConfigはMemOS設定ファイルに移動
 
 
 class ShellIntegrationConfig(BaseModel):
@@ -108,7 +72,7 @@ class ShellIntegrationConfig(BaseModel):
 class MCPConfig(BaseModel):
     """Model Context Protocol設定"""
     enabled: bool = True
-    config_file: str = "../UserData/CocoroAiMcp.json"
+    config_file: str = "../UserData2/CocoroAiMcp.json"
     timeout: int = 30
 
 
@@ -135,14 +99,13 @@ class CocoroCore2Config(BaseModel):
     environment: str = "production"
     server: ServerConfig = Field(default_factory=ServerConfig)
     mos_config: Dict[str, Any] = Field(default_factory=dict)
+    neo4j_config: Dict[str, Any] = Field(default_factory=dict)
     character: CharacterConfig = Field(default_factory=CharacterConfig)
     speech: SpeechConfig = Field(default_factory=SpeechConfig)
     shell_integration: ShellIntegrationConfig = Field(default_factory=ShellIntegrationConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
-    embedder_config: Dict[str, Any] = Field(default_factory=dict)
-    neo4j: Neo4jConfig = Field(default_factory=Neo4jConfig)
 
     @classmethod
     def load(cls, config_path: Optional[str] = None, environment: str = "development") -> "CocoroCore2Config":
@@ -190,12 +153,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def find_config_file(environment: str = "development") -> str:
-    """設定ファイルを自動検索する
+    """CocoroCore2設定ファイルを自動検索する
     
     検索順序:
-    1. ./config/{environment}.json
-    2. ../UserData/setting.json (CocoroAI互換)
-    3. ./config/default_memos_config.json (フォールバック)
+    1. ../UserData2/cocoro_config.json (ユーザー設定）
+    2. ./config/{environment}.json (環境別設定)
+    3. ./config/cocoro_config.json (デフォルト設定)
     
     Args:
         environment: 環境名
@@ -216,17 +179,16 @@ def find_config_file(environment: str = "development") -> str:
     
     # 検索パスのリスト
     search_paths = [
-        base_dir.parent / "UserData" / "cocoro_core2_config.json",  # CocoroCore2専用設定（優先）
-        # base_dir.parent / "UserData" / "setting.json",  # CocoroAI互換
-        base_dir / "config" / f"{environment}.json",
-        base_dir / "config" / "default_memos_config.json",  # フォールバック
+        base_dir.parent / "UserData2" / "cocoro_config.json",  # ユーザー設定（優先）
+        base_dir / "config" / f"{environment}.json",          # 環境別設定
+        base_dir / "config" / "cocoro_config.json",           # デフォルト設定
     ]
     
     for path in search_paths:
         if path.exists():
             return str(path)
     
-    raise ConfigurationError(f"設定ファイルが見つかりません。検索パス: {[str(p) for p in search_paths]}")
+    raise ConfigurationError(f"CocoroCore2設定ファイルが見つかりません。検索パス: {[str(p) for p in search_paths]}")
 
 
 def substitute_env_variables(data: Any) -> Any:
@@ -258,6 +220,82 @@ def substitute_env_variables(data: Any) -> Any:
         return data
 
 
+def load_memos_config() -> Dict[str, Any]:
+    """MemOS設定ファイルを読み込む
+    
+    Returns:
+        Dict[str, Any]: MemOS設定データ
+        
+    Raises:
+        ConfigurationError: 設定ファイルが見つからない場合
+    """
+    # 実行ディレクトリの決定
+    if getattr(sys, "frozen", False):
+        base_dir = Path(sys.executable).parent
+    else:
+        base_dir = Path(__file__).parent.parent
+    
+    userdata_dir = base_dir.parent / "UserData2"
+    config_dir = base_dir / "config"
+    
+    # MemOS設定ファイルを検索（優先順位順）
+    search_paths = [
+        userdata_dir / "memos_config.json",     # ユーザー設定（優先）
+        config_dir / "memos_config.json",       # デフォルト設定
+    ]
+    
+    for config_path in search_paths:
+        if config_path.exists():
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config_data = json.load(f)
+                return substitute_env_variables(config_data)
+            except json.JSONDecodeError as e:
+                raise ConfigurationError(f"MemOS設定ファイルの形式が不正です ({config_path}): {e}")
+            except Exception as e:
+                raise ConfigurationError(f"MemOS設定ファイルの読み込みに失敗しました ({config_path}): {e}")
+    
+    raise ConfigurationError(f"MemOS設定ファイルが見つかりません。検索パス: {[str(p) for p in search_paths]}")
+
+
+def load_neo4j_config() -> Dict[str, Any]:
+    """Neo4j設定ファイルを読み込む
+    
+    Returns:
+        Dict[str, Any]: Neo4j設定データ
+        
+    Raises:
+        ConfigurationError: 設定ファイルが見つからない場合
+    """
+    # 実行ディレクトリの決定
+    if getattr(sys, "frozen", False):
+        base_dir = Path(sys.executable).parent
+    else:
+        base_dir = Path(__file__).parent.parent
+    
+    userdata_dir = base_dir.parent / "UserData2"
+    config_dir = base_dir / "config"
+    
+    # Neo4j設定ファイルを検索（優先順位順）
+    search_paths = [
+        userdata_dir / "neo4j_config.json",     # ユーザー設定（優先）
+        config_dir / "neo4j_config.json",       # デフォルト設定
+    ]
+    
+    for config_path in search_paths:
+        if config_path.exists():
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config_data = json.load(f)
+                return substitute_env_variables(config_data)
+            except json.JSONDecodeError as e:
+                raise ConfigurationError(f"Neo4j設定ファイルの形式が不正です ({config_path}): {e}")
+            except Exception as e:
+                raise ConfigurationError(f"Neo4j設定ファイルの読み込みに失敗しました ({config_path}): {e}")
+    
+    raise ConfigurationError(f"Neo4j設定ファイルが見つかりません。検索パス: {[str(p) for p in search_paths]}")
+
+
 def validate_and_complete_mos_config(config_data: Dict[str, Any]) -> Dict[str, Any]:
     """MemOS設定の検証と補完を行う
     
@@ -271,16 +309,11 @@ def validate_and_complete_mos_config(config_data: Dict[str, Any]) -> Dict[str, A
         ConfigurationError: 必須設定が不足している場合
     """
     if "mos_config" not in config_data:
-        # MemOS設定が存在しない場合はデフォルト設定を読み込み
-        config_dir = Path(__file__).parent.parent / "config"
-        default_mos_path = config_dir / "default_memos_config.json"
-        
-        if default_mos_path.exists():
-            with open(default_mos_path, "r", encoding="utf-8") as f:
-                default_mos_config = json.load(f)
-            config_data["mos_config"] = substitute_env_variables(default_mos_config)
-        else:
-            raise ConfigurationError("MemOS設定が見つかりません")
+        # MemOS設定を別ファイルから読み込み
+        config_data["mos_config"] = load_memos_config()
+    
+    # Neo4j設定を別途追加（MOSConfigには含めない）
+    config_data["neo4j_config"] = load_neo4j_config()
     
     # 必須フィールドの検証
     mos_config = config_data["mos_config"]
@@ -326,7 +359,7 @@ def load_legacy_config(config_dir: Optional[str] = None) -> Dict[str, Any]:
         else:
             base_dir = Path(__file__).parent.parent.parent
         
-        config_path = base_dir / "UserData" / "setting.json"
+        config_path = base_dir / "UserData2" / "setting.json"
     
     if not config_path.exists():
         raise ConfigurationError(f"CocoroAI設定ファイルが見つかりません: {config_path}")

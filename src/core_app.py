@@ -60,19 +60,10 @@ class CocoroCore2App:
         
         # Neo4j組み込みサービス管理
         self.neo4j_manager: Optional[Neo4jManager] = None
-        if config.neo4j.embedded_enabled:
+        neo4j_settings = config.neo4j_config
+        if neo4j_settings.get("embedded_enabled", False):
             try:
-                neo4j_config = {
-                    "uri": config.neo4j.uri,
-                    "user": config.neo4j.user,
-                    "password": config.neo4j.password,
-                    "db_name": config.neo4j.db_name,
-                    "embedded_enabled": config.neo4j.embedded_enabled,
-                    "java_home": config.neo4j.java_home,
-                    "neo4j_home": config.neo4j.neo4j_home,
-                    "startup_timeout": config.neo4j.startup_timeout
-                }
-                self.neo4j_manager = Neo4jManager(neo4j_config)
+                self.neo4j_manager = Neo4jManager(neo4j_settings)
                 self.logger.info("Neo4j manager created for embedded mode")
                 
             except Exception as e:
@@ -512,6 +503,7 @@ class CocoroCore2App:
         chat_model_config = mos_config["chat_model"]["config"]
         mem_reader_config = mos_config["mem_reader"]["config"]
         embedder_config = mem_reader_config["embedder"]["config"]
+        neo4j_settings = self.config.neo4j_config
         
         # ベクトル次元数を設定ファイルから取得、フォールバック付き
         embedder_model = embedder_config["model_name_or_path"]
@@ -572,10 +564,10 @@ class CocoroCore2App:
                     "graph_db": {
                         "backend": "neo4j",
                         "config": {
-                            "uri": self.config.neo4j.uri,
-                            "user": self.config.neo4j.user,
-                            "password": self.config.neo4j.password,
-                            "db_name": self.config.neo4j.db_name,
+                            "uri": neo4j_settings.get("uri", "bolt://127.0.0.1:7687"),
+                            "user": neo4j_settings.get("user", "neo4j"),
+                            "password": neo4j_settings.get("password", "12345678"),
+                            "db_name": neo4j_settings.get("db_name", "neo4j"),
                             "auto_create": False,  # Community Editionでは強制的に無効
                             "embedding_dimension": vector_dimension  # 動的に設定
                         }

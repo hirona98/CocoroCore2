@@ -1,7 +1,7 @@
 """
 設定ファイルの整合性とフォーマット検証テスト
 
-UserData/cocoro_core2_config.jsonの設定が正しく読み込まれることを確認
+UserData2/cocoro_core2_config.jsonの設定が正しく読み込まれることを確認
 """
 
 import sys
@@ -94,7 +94,7 @@ class TestConfigValidation:
     def test_config_file_json_format(self):
         """設定ファイルのJSON形式が正しいことを確認"""
         try:
-            config_path = "../UserData/cocoro_core2_config.json"
+            config_path = "../UserData2/cocoro_core2_config.json"
             
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
@@ -163,7 +163,7 @@ if __name__ == "__main__":
         if success1 and success2 and success3:
             print("\\n✅ 全ての設定検証テスト: 成功")
             print("\\n=== 修正完了 ===")
-            print("1. UserData/cocoro_core2_config.json の形式修正完了")
+            print("1. UserData2/cocoro_core2_config.json の形式修正完了")
             print("2. LLMモデル: gpt-4o-mini に設定")
             print("3. 埋め込みモデル: text-embedding-3-large に設定")
             print("4. 記憶システムバックエンド: general_text (現状維持)")

@@ -1,0 +1,55 @@
+{
+  "version": "2.0.0",
+  "environment": "development",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 55601,
+    "workers": 1,
+    "reload": false,
+    "debug": false
+  },
+  "character": {
+    "name": "つくよみちゃん",
+    "personality": "friendly",
+    "voice_model": "tsukuyomi"
+  },
+  "speech": {
+    "enabled": true,
+    "vad": {
+      "auto_adjustment": true,
+      "fixed_threshold": -40.0,
+      "silence_duration_threshold": 2.0,
+      "max_duration": 30.0
+    },
+    "stt": {
+      "engine": "openai",
+      "model": "whisper-1",
+      "language": "ja",
+      "api_key": "${OPENAI_API_KEY}"
+    }
+  },
+  "shell_integration": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 55605,
+    "auto_tts": true,
+    "timeout": 30
+  },
+  "mcp": {
+    "enabled": true,
+    "config_file": "../UserData2/CocoroAiMcp.json",
+    "timeout": 30
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "logs/cocoro_core2.log",
+    "max_size_mb": 10,
+    "backup_count": 5,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "session": {
+    "timeout_seconds": 300,
+    "max_sessions": 1000,
+    "cleanup_interval_seconds": 30
+  }
+}

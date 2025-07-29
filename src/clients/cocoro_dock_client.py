@@ -104,7 +104,7 @@ class CocoroDockClient:
             import json
             
             # 設定ファイルパス
-            config_path = Path(__file__).parent.parent.parent.parent / "UserData" / "setting.json"
+            config_path = Path(__file__).parent.parent.parent.parent / "UserData2" / "setting.json"
             
             if config_path.exists():
                 with open(config_path, "r", encoding="utf-8") as f:
