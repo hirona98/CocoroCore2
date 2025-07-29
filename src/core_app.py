@@ -478,6 +478,18 @@ class CocoroCore2App:
             # 正規版MOSでのチャット処理
             response = self.mos.chat(query=full_query, user_id=effective_user_id)
             
+            # 会話全体を記憶として保存（messagesフォーマット）
+            try:
+                messages = [
+                    {"role": "user", "content": query},
+                    {"role": "assistant", "content": response}
+                ]
+                # 会話の完全な記録を保存
+                self.mos.add(messages=messages, user_id=effective_user_id)
+                self.logger.debug(f"Saved conversation memory for user {effective_user_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to save conversation memory: {e}")
+            
             # スケジューラーに応答メッセージを送信
             if (self.config.mem_scheduler.auto_submit_answer and 
                 self.text_memory_scheduler and 
@@ -499,31 +511,27 @@ class CocoroCore2App:
             self.logger.error(f"Chat failed: {e}")
             raise
     
-    def add_memory(self, content: str, user_id: Optional[str] = None, **context) -> None:
+    def add_memory(self, content: str, user_id: Optional[str] = None, session_id: Optional[str] = None, **context) -> None:
         """記憶追加（スケジューラー連携付き）
         
         Args:
             content: 記憶内容
             user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
+            session_id: セッションID（オプション）
             **context: 追加コンテキスト情報
         """
         try:
             # 有効なユーザーIDを決定
             effective_user_id = user_id or self.default_user_id
             
-            # コンテキスト情報を本文に含める
-            memory_content = content
-            if context:
-                import json
-                context_info = {
-                    "character": self.config.character.name,
-                    "timestamp": datetime.now().isoformat(),
-                    **context
-                }
-                memory_content += f" | Context: {json.dumps(context_info)}"
+            # messagesフォーマットで記憶を追加（memory_typeをより適切に制御するため）
+            messages = [
+                {"role": "user", "content": content},
+                {"role": "assistant", "content": "了解しました。この情報を記憶します。"}
+            ]
             
-            # 正規版MOSAPIで記憶追加
-            self.mos.add(memory_content=memory_content, user_id=effective_user_id)
+            # 正規版MOSAPIで記憶追加（messagesフォーマットを使用）
+            self.mos.add(messages=messages, user_id=effective_user_id)
             
             # スケジューラーに記憶追加メッセージを送信
             if (self.config.mem_scheduler.enable_memory_integration and 
@@ -908,6 +916,10 @@ class CocoroCore2App:
         Args:
             user_id: ユーザーID
         """
+        # 必要なインポート（再登録処理で使用）
+        from memos.configs.mem_cube import GeneralMemCubeConfig
+        from memos.mem_cube.general import GeneralMemCube
+        
         try:
             # ユーザーの既存MemCubeをチェック
             user_cubes = self.mos.user_manager.get_user_cubes(user_id=user_id)
@@ -953,9 +965,6 @@ class CocoroCore2App:
                 self.logger.info(f"Creating new MemCube for user {user_id} due to registration failures")
             
             # デフォルトMemCubeを作成
-            from memos.configs.mem_cube import GeneralMemCubeConfig
-            from memos.mem_cube.general import GeneralMemCube
-            
             # 設定ファイルからMemCube設定を動的に構築
             cube_config_dict = self._get_memcube_config_from_settings(user_id)
             
