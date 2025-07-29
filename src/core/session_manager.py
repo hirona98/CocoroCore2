@@ -9,9 +9,6 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
 
-from ..config import SessionConfig
-
-
 class SessionInfo:
     """セッション情報"""
     
@@ -48,13 +45,17 @@ class SessionInfo:
 class SessionManager:
     """セッション管理"""
     
-    def __init__(self, config: SessionConfig):
+    def __init__(self, timeout_seconds: int = 300, max_sessions: int = 1000, cleanup_interval_seconds: int = 30):
         """初期化
         
         Args:
-            config: セッション設定
+            timeout_seconds: セッションタイムアウト秒数
+            max_sessions: 最大セッション数
+            cleanup_interval_seconds: クリーンアップ間隔秒数
         """
-        self.config = config
+        self.timeout_seconds = timeout_seconds
+        self.max_sessions = max_sessions
+        self.cleanup_interval_seconds = cleanup_interval_seconds
         self.logger = logging.getLogger(__name__)
         
         # セッション保存
@@ -104,7 +105,7 @@ class SessionManager:
             self.remove_session(session_id)
         
         # 最大セッション数チェック
-        if len(self.sessions) >= self.config.max_sessions:
+        if len(self.sessions) >= self.max_sessions:
             self._cleanup_oldest_sessions()
         
         # 新しいセッション作成
@@ -130,7 +131,7 @@ class SessionManager:
         """
         session = self.sessions.get(session_id)
         
-        if session and session.is_expired(self.config.timeout_seconds):
+        if session and session.is_expired(self.timeout_seconds):
             self.remove_session(session_id)
             return None
         
@@ -214,7 +215,7 @@ class SessionManager:
         # 期限切れセッション数
         expired_count = 0
         for session in self.sessions.values():
-            if session.is_expired(self.config.timeout_seconds):
+            if session.is_expired(self.timeout_seconds):
                 expired_count += 1
         
         return {
@@ -222,8 +223,8 @@ class SessionManager:
             "total_users": total_users,
             "total_requests": total_requests,
             "expired_sessions": expired_count,
-            "max_sessions": self.config.max_sessions,
-            "timeout_seconds": self.config.timeout_seconds,
+            "max_sessions": self.max_sessions,
+            "timeout_seconds": self.timeout_seconds,
         }
     
     def ensure_session(self, session_id: str, user_id: str) -> SessionInfo:
@@ -260,7 +261,7 @@ class SessionManager:
         """期限切れセッションの定期クリーンアップ"""
         while self.is_running:
             try:
-                await asyncio.sleep(self.config.cleanup_interval_seconds)
+                await asyncio.sleep(self.cleanup_interval_seconds)
                 await self._cleanup_expired_sessions()
             except asyncio.CancelledError:
                 break
@@ -272,7 +273,7 @@ class SessionManager:
         expired_sessions = []
         
         for session_id, session in self.sessions.items():
-            if session.is_expired(self.config.timeout_seconds):
+            if session.is_expired(self.timeout_seconds):
                 expired_sessions.append(session_id)
         
         for session_id in expired_sessions:

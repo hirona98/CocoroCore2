@@ -11,7 +11,7 @@ from pathlib import Path
 # テスト用にsrcディレクトリをパスに追加
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from config import CocoroCore2Config, substitute_env_variables, validate_and_complete_mos_config
+from config import CocoroCore2Config, substitute_env_variables, validate_and_complete_config
 
 
 class TestConfigBasic:
@@ -58,7 +58,7 @@ class TestConfigBasic:
             test_config = {}
             
             # MemOS設定検証・補完実行
-            result = validate_and_complete_mos_config(test_config)
+            result = validate_and_complete_config(test_config)
             
             # 結果確認
             assert "mos_config" in result

@@ -98,11 +98,12 @@ def setup_signal_handlers():
 def setup_api_keys_from_config(config: CocoroCore2Config):
     """設定ファイルからAPIキーを環境変数に設定"""
     try:
-        # mos_config から OpenAI APIキーを取得
-        mos_config = config.mos_config
+        # MemOS設定から OpenAI APIキーを取得
+        from config import load_memos_config
+        memos_config = load_memos_config()
         
         # chat_model の APIキー
-        chat_model_config = mos_config.get("chat_model", {}).get("config", {})
+        chat_model_config = memos_config.get("chat_model", {}).get("config", {})
         chat_api_key = chat_model_config.get("api_key", "")
         
         if chat_api_key and chat_api_key.startswith("sk-"):
@@ -110,7 +111,7 @@ def setup_api_keys_from_config(config: CocoroCore2Config):
             return True
         
         # mem_reader の LLM APIキー
-        mem_reader_llm_config = mos_config.get("mem_reader", {}).get("config", {}).get("llm", {}).get("config", {})
+        mem_reader_llm_config = memos_config.get("mem_reader", {}).get("config", {}).get("llm", {}).get("config", {})
         mem_llm_api_key = mem_reader_llm_config.get("api_key", "")
         
         if mem_llm_api_key and mem_llm_api_key.startswith("sk-"):

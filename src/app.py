@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app_instance.startup()
         
         # セッション管理初期化
-        session_manager = SessionManager(config.session)
+        session_manager = SessionManager()
         await session_manager.start()
         
         logger.info("CocoroCore2 startup completed")

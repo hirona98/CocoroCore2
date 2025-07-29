@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from memos.mem_os.main import MOS
 
-from config import CocoroCore2Config, get_mos_config
+from config import CocoroCore2Config, get_mos_config, load_memos_config, load_neo4j_config
 from .core.neo4j_manager import Neo4jManager
 
 
@@ -36,7 +36,8 @@ class CocoroCore2App:
             self.mos = MOS(mos_config)
             
             # デフォルトユーザーID設定
-            self.default_user_id = config.mos_config.get("user_id", "default")
+            memos_config_data = load_memos_config()
+            self.default_user_id = memos_config_data.get("user_id", "default")
             
             # デフォルトシステムプロンプト設定（キャラクター別）
             self.default_system_prompts = {
@@ -60,7 +61,7 @@ class CocoroCore2App:
         
         # Neo4j組み込みサービス管理
         self.neo4j_manager: Optional[Neo4jManager] = None
-        neo4j_settings = config.neo4j_config
+        neo4j_settings = load_neo4j_config()
         if neo4j_settings.get("embedded_enabled", False):
             try:
                 self.neo4j_manager = Neo4jManager(neo4j_settings)
@@ -79,7 +80,8 @@ class CocoroCore2App:
         """正規版MOS用の環境変数を設定する"""
         try:
             # 設定ファイルからAPIキーを取得
-            api_key = self.config.mos_config["chat_model"]["config"]["api_key"]
+            memos_config_data = load_memos_config()
+            api_key = memos_config_data["chat_model"]["config"]["api_key"]
             
             # 環境変数設定
             os.environ["OPENAI_API_KEY"] = api_key
@@ -499,11 +501,11 @@ class CocoroCore2App:
             dict: MemCube設定辞書
         """
         # 設定ファイルから必要な値を取得
-        mos_config = self.config.mos_config
-        chat_model_config = mos_config["chat_model"]["config"]
-        mem_reader_config = mos_config["mem_reader"]["config"]
+        memos_config_data = load_memos_config()
+        chat_model_config = memos_config_data["chat_model"]["config"]
+        mem_reader_config = memos_config_data["mem_reader"]["config"]
         embedder_config = mem_reader_config["embedder"]["config"]
-        neo4j_settings = self.config.neo4j_config
+        neo4j_settings = load_neo4j_config()
         
         # ベクトル次元数を設定ファイルから取得、フォールバック付き
         embedder_model = embedder_config["model_name_or_path"]
@@ -535,7 +537,7 @@ class CocoroCore2App:
                     "cube_id": f"{user_id}_default_cube",
                     "memory_filename": "tree_textual_memory.json",
                     "extractor_llm": {
-                        "backend": mos_config["chat_model"]["backend"],
+                        "backend": memos_config_data["chat_model"]["backend"],
                         "config": {
                             "model_name_or_path": chat_model_config["model_name_or_path"],
                             "temperature": 0.0,  # Memory用は固定値
@@ -544,7 +546,7 @@ class CocoroCore2App:
                         }
                     },
                     "dispatcher_llm": {
-                        "backend": mos_config["chat_model"]["backend"],
+                        "backend": memos_config_data["chat_model"]["backend"],
                         "config": {
                             "model_name_or_path": chat_model_config["model_name_or_path"],
                             "temperature": 0.0,  # Memory用は固定値

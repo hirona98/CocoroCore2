@@ -22,58 +22,46 @@ class ServerConfig(BaseModel):
     """FastAPIサーバー設定"""
     host: str = "127.0.0.1"
     port: int = 55601
-    workers: int = 1
     reload: bool = False
-    debug: bool = False
 
 
 class CharacterConfig(BaseModel):
     """キャラクター設定"""
     name: str = "つくよみちゃん"
-    personality: str = "friendly"
-    voice_model: str = "tsukuyomi"
-
-
-class VADConfig(BaseModel):
-    """Voice Activity Detection設定"""
-    auto_adjustment: bool = True
-    fixed_threshold: float = -40.0
-    silence_duration_threshold: float = 2.0
-    max_duration: float = 30.0
 
 
 class STTConfig(BaseModel):
     """Speech-To-Text設定"""
-    engine: str = "openai"
-    model: str = "whisper-1"
-    language: str = "ja"
     api_key: Optional[str] = None
 
 
 class SpeechConfig(BaseModel):
     """音声処理設定"""
     enabled: bool = True
-    vad: VADConfig = Field(default_factory=VADConfig)
     stt: STTConfig = Field(default_factory=STTConfig)
 
 
-# Neo4jConfigはMemOS設定ファイルに移動
+class Neo4jSetting(BaseModel):
+    """Neo4j設定"""
+    uri: str = "bolt://127.0.0.1:7687"
+    user: str = "neo4j"
+    password: str = "12345678"
+    db_name: str = "neo4j"
+    embedding_dimension: int = 3072
+    embedded_enabled: bool = True
+    java_home: str = "jre"
+    neo4j_home: str = "neo4j"
+    startup_timeout: int = 60
 
 
 class ShellIntegrationConfig(BaseModel):
     """CocoroShell統合設定"""
     enabled: bool = True
-    host: str = "127.0.0.1"
-    port: int = 55605
-    auto_tts: bool = True
-    timeout: int = 30
 
 
 class MCPConfig(BaseModel):
     """Model Context Protocol設定"""
     enabled: bool = True
-    config_file: str = "../UserData2/CocoroAiMcp.json"
-    timeout: int = 30
 
 
 class LoggingConfig(BaseModel):
@@ -85,27 +73,15 @@ class LoggingConfig(BaseModel):
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
-class SessionConfig(BaseModel):
-    """セッション管理設定"""
-    timeout_seconds: int = 300
-    max_sessions: int = 1000
-    cleanup_interval_seconds: int = 30
-
-
-
 class CocoroCore2Config(BaseModel):
     """CocoroCore2統合設定"""
     version: str = "2.0.0"
-    environment: str = "production"
     server: ServerConfig = Field(default_factory=ServerConfig)
-    mos_config: Dict[str, Any] = Field(default_factory=dict)
-    neo4j_config: Dict[str, Any] = Field(default_factory=dict)
     character: CharacterConfig = Field(default_factory=CharacterConfig)
     speech: SpeechConfig = Field(default_factory=SpeechConfig)
     shell_integration: ShellIntegrationConfig = Field(default_factory=ShellIntegrationConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    session: SessionConfig = Field(default_factory=SessionConfig)
 
     @classmethod
     def load(cls, config_path: Optional[str] = None, environment: str = "development") -> "CocoroCore2Config":
@@ -128,8 +104,8 @@ class CocoroCore2Config(BaseModel):
         # 環境変数置換
         config_data = substitute_env_variables(config_data)
         
-        # MemOS設定の検証・補完
-        config_data = validate_and_complete_mos_config(config_data)
+        # 設定の検証・補完
+        config_data = validate_and_complete_config(config_data)
         
         try:
             return cls(**config_data)
@@ -156,9 +132,8 @@ def find_config_file(environment: str = "development") -> str:
     """CocoroCore2設定ファイルを自動検索する
     
     検索順序:
-    1. ../UserData2/cocoro_config.json (ユーザー設定）
-    2. ./config/{environment}.json (環境別設定)
-    3. ./config/cocoro_config.json (デフォルト設定)
+    1. ../UserData2/CocoroSetting.json (ユーザー設定）
+    2. ./config/CocoroSetting.json (デフォルト設定)
     
     Args:
         environment: 環境名
@@ -179,9 +154,8 @@ def find_config_file(environment: str = "development") -> str:
     
     # 検索パスのリスト
     search_paths = [
-        base_dir.parent / "UserData2" / "cocoro_config.json",  # ユーザー設定（優先）
-        base_dir / "config" / f"{environment}.json",          # 環境別設定
-        base_dir / "config" / "cocoro_config.json",           # デフォルト設定
+        base_dir.parent / "UserData2" / "CocoroSetting.json",  # ユーザー設定（優先）
+        base_dir / "config" / "CocoroSetting.json",           # デフォルト設定
     ]
     
     for path in search_paths:
@@ -240,8 +214,8 @@ def load_memos_config() -> Dict[str, Any]:
     
     # MemOS設定ファイルを検索（優先順位順）
     search_paths = [
-        userdata_dir / "memos_config.json",     # ユーザー設定（優先）
-        config_dir / "memos_config.json",       # デフォルト設定
+        userdata_dir / "MemosSetting.json",     # ユーザー設定（優先）
+        config_dir / "MemosSetting.json",       # デフォルト設定
     ]
     
     for config_path in search_paths:
@@ -278,8 +252,8 @@ def load_neo4j_config() -> Dict[str, Any]:
     
     # Neo4j設定ファイルを検索（優先順位順）
     search_paths = [
-        userdata_dir / "neo4j_config.json",     # ユーザー設定（優先）
-        config_dir / "neo4j_config.json",       # デフォルト設定
+        userdata_dir / "Neo4jSetting.json",     # ユーザー設定（優先）
+        config_dir / "Neo4jSetting.json",       # デフォルト設定
     ]
     
     for config_path in search_paths:
@@ -296,8 +270,8 @@ def load_neo4j_config() -> Dict[str, Any]:
     raise ConfigurationError(f"Neo4j設定ファイルが見つかりません。検索パス: {[str(p) for p in search_paths]}")
 
 
-def validate_and_complete_mos_config(config_data: Dict[str, Any]) -> Dict[str, Any]:
-    """MemOS設定の検証と補完を行う
+def validate_and_complete_config(config_data: Dict[str, Any]) -> Dict[str, Any]:
+    """設定の検証と補完を行う
     
     Args:
         config_data: 設定データ
@@ -308,34 +282,7 @@ def validate_and_complete_mos_config(config_data: Dict[str, Any]) -> Dict[str, A
     Raises:
         ConfigurationError: 必須設定が不足している場合
     """
-    if "mos_config" not in config_data:
-        # MemOS設定を別ファイルから読み込み
-        config_data["mos_config"] = load_memos_config()
-    
-    # Neo4j設定を別途追加（MOSConfigには含めない）
-    config_data["neo4j_config"] = load_neo4j_config()
-    
-    # 必須フィールドの検証
-    mos_config = config_data["mos_config"]
-    required_fields = ["chat_model", "mem_reader"]
-    
-    for field in required_fields:
-        if field not in mos_config:
-            raise ConfigurationError(f"MemOS設定に必須フィールド '{field}' がありません")
-    
-    # デフォルト値の補完
-    mos_defaults = {
-        "max_turns_window": 20,
-        "top_k": 5,
-        "enable_textual_memory": True,
-        "enable_activation_memory": False,
-        "enable_parametric_memory": False,
-    }
-    
-    for key, default_value in mos_defaults.items():
-        if key not in mos_config:
-            mos_config[key] = default_value
-    
+    # 設定の基本的な検証のみ
     return config_data
 
 
@@ -420,11 +367,11 @@ def load_mos_config_from_file(config_path: str):
         raise ConfigurationError(f"MOSConfig読み込みに失敗しました: {e}")
 
 
-def get_mos_config(config: "CocoroCore2Config"):
-    """CocoroCore2ConfigからMOSConfigオブジェクトを取得する
+def get_mos_config(config: "CocoroCore2Config" = None):
+    """MOSConfigオブジェクトを取得する
     
     Args:
-        config: CocoroCore2設定オブジェクト
+        config: CocoroCore2設定オブジェクト（使用しない、互換性のため）
         
     Returns:
         MOSConfig: MOSConfigオブジェクト
@@ -432,7 +379,5 @@ def get_mos_config(config: "CocoroCore2Config"):
     Raises:
         ConfigurationError: MOSConfig作成に失敗した場合
     """
-    if not config.mos_config:
-        raise ConfigurationError("MemOS設定が見つかりません")
-    
-    return create_mos_config_from_dict(config.mos_config)
+    memos_config_data = load_memos_config()
+    return create_mos_config_from_dict(memos_config_data)

@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 55601,
+    "reload": false
+  },
+  "character": {
+    "name": "つくよみちゃん"
+  },
+  "speech": {
+    "enabled": true,
+    "stt": {
+      "api_key": "${OPENAI_API_KEY}"
+    }
+  },
+  "shell_integration": {
+    "enabled": true
+  },
+  "mcp": {
+    "enabled": true
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "logs/cocoro_core2.log",
+    "max_size_mb": 10,
+    "backup_count": 5,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  }
+}
