@@ -11,8 +11,6 @@ from typing import Any, Dict, Optional
 from memos.mem_os.main import MOS
 
 from config import CocoroCore2Config, get_mos_config
-from .core.text_memory_scheduler import TextMemorySchedulerManager
-from .core.optimization_scheduler import OptimizationScheduler
 from .core.neo4j_manager import Neo4jManager
 
 
@@ -59,9 +57,6 @@ class CocoroCore2App:
         self.is_running = False
         self.startup_time = datetime.now()
         
-        # テキストメモリスケジューラー初期化
-        self.text_memory_scheduler: Optional[TextMemorySchedulerManager] = None
-        self.optimization_scheduler: Optional[OptimizationScheduler] = None
         
         # Neo4j組み込みサービス管理
         self.neo4j_manager: Optional[Neo4jManager] = None
@@ -86,25 +81,6 @@ class CocoroCore2App:
         else:
             self.logger.info("Embedded Neo4j is disabled, expecting external Neo4j instance")
         
-        if config.mem_scheduler.enabled:
-            try:
-                self.text_memory_scheduler = TextMemorySchedulerManager(config)
-                self.logger.info("Text memory scheduler manager created")
-                
-                # Phase 3: 自動最適化スケジューラー初期化
-                if config.mem_scheduler.enable_auto_optimization:
-                    self.optimization_scheduler = OptimizationScheduler(config, self.text_memory_scheduler)
-                    self.logger.info("Optimization scheduler created")
-                else:
-                    self.logger.info("Auto optimization is disabled in configuration")
-                    
-            except Exception as e:
-                self.logger.error(f"Failed to create text memory scheduler manager: {e}")
-                # スケジューラーエラーはアプリケーション全体を停止させない
-                self.text_memory_scheduler = None
-                self.optimization_scheduler = None
-        else:
-            self.logger.info("Text memory scheduler is disabled in configuration")
         
         self.logger.info("CocoroCore2App initialized with full MOS integration")
     
@@ -129,33 +105,6 @@ class CocoroCore2App:
             self.logger.error(f"Failed to setup MemOS environment: {e}")
             raise
     
-    def _get_chat_llm_from_mos(self):
-        """MOSからchat_llmインスタンスを取得
-        
-        Returns:
-            BaseLLM: チャット用LLMインスタンス
-            
-        Raises:
-            RuntimeError: LLMインスタンスの取得に失敗した場合
-        """
-        try:
-            # MOSのchat_llmを直接取得
-            if hasattr(self.mos, 'chat_llm') and self.mos.chat_llm is not None:
-                self.logger.debug("Retrieved chat_llm from MOS instance")
-                return self.mos.chat_llm
-            else:
-                # フォールバック: MOSConfigから新しいLLMインスタンスを作成
-                self.logger.warning("chat_llm not found in MOS, creating from config")
-                from memos.llms.factory import LLMFactory
-                from memos.configs.llm import LLMConfigFactory
-                
-                chat_model_config = self.config.mos_config["chat_model"]
-                llm_config_factory = LLMConfigFactory(**chat_model_config)
-                return LLMFactory.from_config(llm_config_factory)
-                
-        except Exception as e:
-            self.logger.error(f"Failed to get chat LLM from MOS: {e}")
-            raise RuntimeError(f"MOSからLLMインスタンスの取得に失敗しました: {e}")
     
     def _get_user_memcube(self, user_id: str) -> Optional["GeneralMemCube"]:
         """ユーザーのデフォルトMemCubeを取得
@@ -215,39 +164,6 @@ class CocoroCore2App:
             self.logger.error(f"Failed to get MemCube ID for user {user_id}: {e}")
             return None
 
-    def _safely_submit_to_scheduler(self, action_name: str, submit_func, *args, **kwargs) -> bool:
-        """スケジューラーへの安全なメッセージ送信
-        
-        Args:
-            action_name: アクション名（ログ用）
-            submit_func: 送信関数
-            *args, **kwargs: 送信関数への引数
-            
-        Returns:
-            bool: 送信成功フラグ
-        """
-        try:
-            # スケジューラーが利用可能かチェック
-            if not (self.text_memory_scheduler and 
-                    self.text_memory_scheduler.is_running and
-                    self.config.mem_scheduler.enabled):
-                self.logger.debug(f"Scheduler not available for {action_name}")
-                return False
-            
-            # メッセージ送信実行
-            submit_func(*args, **kwargs)
-            self.logger.debug(f"Successfully submitted {action_name} to scheduler")
-            return True
-            
-        except Exception as e:
-            self.logger.warning(f"Failed to submit {action_name} to scheduler: {e}")
-            
-            # グレースフルデグラデーション設定がある場合はエラーを隠す
-            if self.config.mem_scheduler.text_memory_optimization.get("graceful_degradation", True):
-                return False
-            else:
-                # 設定で例外の再発生が指定されている場合
-                raise
     
     async def startup(self):
         """アプリケーション起動処理"""
@@ -303,37 +219,6 @@ class CocoroCore2App:
                 self.logger.info("MCP integration is enabled")
                 # await self.mcp_tools.initialize()
             
-            # テキストメモリスケジューラー初期化・開始
-            if self.text_memory_scheduler:
-                try:
-                    self.logger.info("Initializing text memory scheduler...")
-                    
-                    # chat_llmを取得（MOSから）
-                    chat_llm = self._get_chat_llm_from_mos()
-                    self.text_memory_scheduler.initialize(chat_llm)
-                    await self.text_memory_scheduler.start()
-                    
-                    self.logger.info("Text memory scheduler started successfully")
-                    
-                    # Phase 3: 自動最適化スケジューラー開始
-                    if self.optimization_scheduler:
-                        try:
-                            self.logger.info("Starting optimization scheduler...")
-                            
-                            # 双方向連携を設定
-                            self.text_memory_scheduler.set_optimization_scheduler(self.optimization_scheduler)
-                            
-                            await self.optimization_scheduler.start()
-                            self.logger.info("Optimization scheduler started successfully")
-                        except Exception as e:
-                            self.logger.error(f"Failed to start optimization scheduler: {e}")
-                            self.optimization_scheduler = None
-                    
-                except Exception as e:
-                    self.logger.error(f"Failed to start text memory scheduler: {e}")
-                    # スケジューラーエラーはアプリケーション全体を停止させない
-                    self.text_memory_scheduler = None
-                    self.optimization_scheduler = None
             
             self.is_running = True
             self.logger.info("CocoroCore2App startup completed")
@@ -347,23 +232,6 @@ class CocoroCore2App:
         try:
             self.logger.info("Shutting down CocoroCore2App...")
             
-            # Phase 3: 自動最適化スケジューラー停止
-            if self.optimization_scheduler and self.optimization_scheduler.is_running:
-                try:
-                    self.logger.info("Stopping optimization scheduler...")
-                    await self.optimization_scheduler.stop()
-                    self.logger.info("Optimization scheduler stopped")
-                except Exception as e:
-                    self.logger.error(f"Failed to stop optimization scheduler: {e}")
-            
-            # テキストメモリスケジューラー停止
-            if self.text_memory_scheduler and self.text_memory_scheduler.is_running:
-                try:
-                    self.logger.info("Stopping text memory scheduler...")
-                    await self.text_memory_scheduler.stop()
-                    self.logger.info("Text memory scheduler stopped")
-                except Exception as e:
-                    self.logger.error(f"Failed to stop text memory scheduler: {e}")
             
             # MemCubeの永続化（Neo4j停止前に実行）
             try:
@@ -461,19 +329,6 @@ class CocoroCore2App:
             # システムプロンプトをqueryに追加
             full_query = f"{effective_system_prompt}\n\n{query}"
             
-            # スケジューラーにクエリメッセージを送信
-            if (self.config.mem_scheduler.auto_submit_query and 
-                self.text_memory_scheduler and 
-                self.text_memory_scheduler.is_running):
-                mem_cube = self._get_user_memcube(effective_user_id)
-                if mem_cube:
-                    self._safely_submit_to_scheduler(
-                        "query_message",
-                        self.text_memory_scheduler.submit_query_message,
-                        user_id=effective_user_id,
-                        content=query,  # 元のクエリ（システムプロンプトは含まない）
-                        mem_cube=mem_cube
-                    )
             
             # 正規版MOSでのチャット処理
             response = self.mos.chat(query=full_query, user_id=effective_user_id)
@@ -490,19 +345,6 @@ class CocoroCore2App:
             except Exception as e:
                 self.logger.warning(f"Failed to save conversation memory: {e}")
             
-            # スケジューラーに応答メッセージを送信
-            if (self.config.mem_scheduler.auto_submit_answer and 
-                self.text_memory_scheduler and 
-                self.text_memory_scheduler.is_running):
-                mem_cube = self._get_user_memcube(effective_user_id)
-                if mem_cube:
-                    self._safely_submit_to_scheduler(
-                        "answer_message",
-                        self.text_memory_scheduler.submit_answer_message,
-                        user_id=effective_user_id,
-                        content=response,
-                        mem_cube=mem_cube
-                    )
             
             self.logger.debug(f"Chat response: {len(response)} characters")
             return response
@@ -533,27 +375,6 @@ class CocoroCore2App:
             # 正規版MOSAPIで記憶追加（messagesフォーマットを使用）
             self.mos.add(messages=messages, user_id=effective_user_id)
             
-            # スケジューラーに記憶追加メッセージを送信
-            if (self.config.mem_scheduler.enable_memory_integration and 
-                self.text_memory_scheduler and 
-                self.text_memory_scheduler.is_running):
-                mem_cube = self._get_user_memcube(effective_user_id)
-                if mem_cube:
-                    self._safely_submit_to_scheduler(
-                        "add_message",
-                        self.text_memory_scheduler.submit_add_message,
-                        user_id=effective_user_id,
-                        content=content,  # 元のコンテンツ（コンテキスト情報は含まない）
-                        mem_cube=mem_cube
-                    )
-            
-            # Phase 3: 自動最適化スケジューラーに記憶追加を通知
-            if self.optimization_scheduler and self.config.mem_scheduler.enable_auto_optimization:
-                try:
-                    self.optimization_scheduler.notify_memory_added(effective_user_id)
-                    self.logger.debug(f"Notified optimization scheduler of memory addition for user {effective_user_id}")
-                except Exception as e:
-                    self.logger.error(f"Failed to notify optimization scheduler: {e}")
             
             self.logger.debug(f"Memory added: {len(content)} characters")
             
@@ -598,146 +419,9 @@ class CocoroCore2App:
             self.logger.error(f"Manual optimization failed for user {effective_user_id}: {e}")
             return {"success": False, "error": str(e)}
     
-    def get_optimization_status(self, user_id: Optional[str] = None) -> Dict[str, Any]:
-        """最適化状態取得API
-        
-        Args:
-            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
-            
-        Returns:
-            Dict[str, Any]: 最適化状態情報
-        """
-        effective_user_id = user_id or self.default_user_id
-        
-        try:
-            status = {}
-            
-            # テキストメモリスケジューラーの状態
-            if self.text_memory_scheduler:
-                scheduler_status = self.text_memory_scheduler.get_scheduler_status()
-                status["text_memory_scheduler"] = scheduler_status
-            else:
-                status["text_memory_scheduler"] = {"available": False}
-            
-            # 自動最適化スケジューラーの状態
-            if self.optimization_scheduler:
-                optimization_status = self.optimization_scheduler.get_scheduler_status()
-                status["optimization_scheduler"] = optimization_status
-            else:
-                status["optimization_scheduler"] = {"available": False}
-            
-            # ワーキングメモリの状態
-            if self.text_memory_scheduler:
-                try:
-                    working_memory_status = self.text_memory_scheduler.get_working_memory_status(effective_user_id)
-                    status["working_memory"] = working_memory_status
-                except Exception as e:
-                    status["working_memory"] = {"error": str(e)}
-            else:
-                status["working_memory"] = {"available": False}
-            
-            return status
-            
-        except Exception as e:
-            self.logger.error(f"Failed to get optimization status for user {effective_user_id}: {e}")
-            return {"error": str(e)}
     
-    def analyze_memory(self, user_id: Optional[str] = None) -> Dict[str, Any]:
-        """記憶分析API
-        
-        Args:
-            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
-            
-        Returns:
-            Dict[str, Any]: 記憶分析結果
-        """
-        effective_user_id = user_id or self.default_user_id
-        
-        if not self.text_memory_scheduler:
-            return {"error": "Text memory scheduler not available"}
-        
-        try:
-            # ワーキングメモリ状態
-            working_memory_status = self.text_memory_scheduler.get_working_memory_status(effective_user_id)
-            
-            # 重複検出
-            duplicate_analysis = self.text_memory_scheduler.detect_duplicate_memories(effective_user_id)
-            
-            # 品質分析
-            quality_analysis = self.text_memory_scheduler.analyze_memory_quality(effective_user_id)
-            
-            return {
-                "user_id": effective_user_id,
-                "timestamp": datetime.now().isoformat(),
-                "working_memory_status": working_memory_status,
-                "duplicate_analysis": duplicate_analysis,
-                "quality_analysis": quality_analysis
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Memory analysis failed for user {effective_user_id}: {e}")
-            return {"error": str(e)}
     
-    def force_optimization(
-        self, 
-        user_id: Optional[str] = None, 
-        optimization_type: str = "full"
-    ) -> Dict[str, Any]:
-        """強制最適化トリガーAPI
-        
-        Args:
-            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
-            optimization_type: 最適化タイプ
-            
-        Returns:
-            Dict[str, Any]: 操作結果
-        """
-        effective_user_id = user_id or self.default_user_id
-        
-        if not self.optimization_scheduler:
-            return {"success": False, "error": "Optimization scheduler not available"}
-        
-        try:
-            self.optimization_scheduler.force_optimization(effective_user_id, optimization_type)
-            
-            return {
-                "success": True,
-                "message": f"Forced optimization scheduled for user {effective_user_id}",
-                "optimization_type": optimization_type,
-                "user_id": effective_user_id
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Force optimization failed for user {effective_user_id}: {e}")
-            return {"success": False, "error": str(e)}
     
-    def reset_memory_count(self, user_id: Optional[str] = None) -> Dict[str, Any]:
-        """記憶カウントリセットAPI
-        
-        Args:
-            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
-            
-        Returns:
-            Dict[str, Any]: 操作結果
-        """
-        effective_user_id = user_id or self.default_user_id
-        
-        if not self.optimization_scheduler:
-            return {"success": False, "error": "Optimization scheduler not available"}
-        
-        try:
-            self.optimization_scheduler.reset_user_memory_count(effective_user_id)
-            
-            return {
-                "success": True,
-                "message": f"Memory count reset for user {effective_user_id}",
-                "user_id": effective_user_id
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Reset memory count failed for user {effective_user_id}: {e}")
-            return {"success": False, "error": str(e)}
-            self.logger.warning("Memory features may be temporarily disabled")
     
     def search_memory(self, query: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """記憶検索（同期）
@@ -1023,37 +707,9 @@ class CocoroCore2App:
                     "speech_enabled": self.config.speech.enabled,
                     "mcp_enabled": self.config.mcp.enabled,
                     "shell_integration": self.config.shell_integration.enabled,
-                    "text_memory_scheduler_enabled": self.config.mem_scheduler.enabled,
                 }
             }
             
-            # スケジューラー情報を追加
-            if self.text_memory_scheduler:
-                scheduler_status = self.text_memory_scheduler.get_scheduler_status()
-                
-                # Phase 2固有のステータス情報を追加
-                scheduler_status.update({
-                    "chat_integration_enabled": self.config.mem_scheduler.enable_chat_integration,
-                    "memory_integration_enabled": self.config.mem_scheduler.enable_memory_integration,
-                    "auto_submit_query": self.config.mem_scheduler.auto_submit_query,
-                    "auto_submit_answer": self.config.mem_scheduler.auto_submit_answer,
-                    "memcube_available": self._get_user_memcube(self.default_user_id) is not None
-                })
-                
-                status["scheduler_status"] = scheduler_status
-            else:
-                status["scheduler_status"] = {
-                    "initialized": False,
-                    "running": False,
-                    "enabled": self.config.mem_scheduler.enabled,
-                    "available": False,
-                    "reason": "scheduler not created",
-                    "chat_integration_enabled": self.config.mem_scheduler.enable_chat_integration,
-                    "memory_integration_enabled": self.config.mem_scheduler.enable_memory_integration,
-                    "auto_submit_query": self.config.mem_scheduler.auto_submit_query,
-                    "auto_submit_answer": self.config.mem_scheduler.auto_submit_answer,
-                    "memcube_available": False
-                }
             
             return status
             

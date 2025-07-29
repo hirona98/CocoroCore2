@@ -128,106 +128,6 @@ class SessionConfig(BaseModel):
     cleanup_interval_seconds: int = 30
 
 
-class MemSchedulerConfig(BaseModel):
-    """メモリスケジューラー設定"""
-    enabled: bool = True
-    top_k: int = 5
-    context_window_size: int = 5
-    enable_act_memory_update: bool = False
-    enable_parallel_dispatch: bool = False
-    thread_pool_max_workers: int = 3
-    consume_interval_seconds: int = 2
-    act_mem_update_interval: int = 300
-    
-    # チャット連携設定
-    enable_chat_integration: bool = True
-    enable_memory_integration: bool = True
-    auto_submit_query: bool = True
-    auto_submit_answer: bool = True
-    
-    # Phase 3: 自動最適化機能設定
-    enable_auto_optimization: bool = True
-    auto_optimize_interval: int = Field(default=3600, ge=60, le=86400)  # 秒（1分-24時間）
-    auto_optimize_threshold: int = Field(default=50, ge=1, le=1000)   # 記憶数（1-1000）
-    max_concurrent_optimizations: int = Field(default=3, ge=1, le=10)  # 1-10並列
-    
-    # テキストメモリ特化設定
-    text_memory_optimization: Dict[str, Any] = Field(default_factory=lambda: {
-        # Phase 2までの既存設定
-        "enable_deduplication": True,
-        "similarity_threshold": 0.95,
-        "working_memory_size": 20,
-        "long_term_memory_capacity": 10000,
-        "user_memory_capacity": 10000,
-        "graceful_degradation": True,
-        "log_scheduler_errors": True,
-        
-        # Phase 3: 新規最適化設定
-        "auto_optimize_interval": 3600,
-        "auto_optimize_threshold": 50,
-        "max_concurrent_optimizations": 3,
-        "min_memory_length": 10,
-        "quality_score_threshold": 0.7,
-        "enable_background_optimization": True,
-        "optimization_batch_size": 100,
-        "similarity_analysis_enabled": True,
-        "reranking_enabled": True,
-        "memory_lifecycle_management": True
-    })
-    
-    @validator('text_memory_optimization')
-    def validate_text_memory_optimization(cls, v):
-        """テキストメモリ最適化設定の検証"""
-        if not isinstance(v, dict):
-            raise ValueError("text_memory_optimization must be a dictionary")
-        
-        # Phase 3設定項目の検証
-        validations = {
-            "similarity_threshold": (0.0, 1.0, "similarity_threshold must be between 0.0 and 1.0"),
-            "working_memory_size": (1, 100, "working_memory_size must be between 1 and 100"),
-            "auto_optimize_interval": (60, 86400, "auto_optimize_interval must be between 60 and 86400 seconds"),
-            "auto_optimize_threshold": (1, 1000, "auto_optimize_threshold must be between 1 and 1000"),
-            "max_concurrent_optimizations": (1, 10, "max_concurrent_optimizations must be between 1 and 10"),
-            "min_memory_length": (1, 1000, "min_memory_length must be between 1 and 1000"),
-            "quality_score_threshold": (0.0, 1.0, "quality_score_threshold must be between 0.0 and 1.0"),
-            "optimization_batch_size": (1, 1000, "optimization_batch_size must be between 1 and 1000"),
-        }
-        
-        for key, (min_val, max_val, error_msg) in validations.items():
-            if key in v:
-                value = v[key]
-                if isinstance(value, (int, float)) and not (min_val <= value <= max_val):
-                    raise ValueError(error_msg)
-        
-        return v
-    
-    @validator('auto_optimize_interval')
-    def validate_auto_optimize_interval(cls, v):
-        """自動最適化間隔の検証"""
-        if v < 60:
-            raise ValueError("auto_optimize_interval must be at least 60 seconds")
-        if v > 86400:
-            raise ValueError("auto_optimize_interval must not exceed 24 hours (86400 seconds)")
-        return v
-    
-    @validator('auto_optimize_threshold')  
-    def validate_auto_optimize_threshold(cls, v):
-        """自動最適化閾値の検証"""
-        if v < 1:
-            raise ValueError("auto_optimize_threshold must be at least 1")
-        if v > 1000:
-            raise ValueError("auto_optimize_threshold must not exceed 1000")
-        return v
-    
-    @validator('max_concurrent_optimizations')
-    def validate_max_concurrent_optimizations(cls, v):
-        """最大並列最適化数の検証"""
-        if v < 1:
-            raise ValueError("max_concurrent_optimizations must be at least 1")
-        if v > 10:
-            raise ValueError("max_concurrent_optimizations must not exceed 10")
-        return v
-
 
 class CocoroCore2Config(BaseModel):
     """CocoroCore2統合設定"""
@@ -242,7 +142,6 @@ class CocoroCore2Config(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
     embedder_config: Dict[str, Any] = Field(default_factory=dict)
-    mem_scheduler: MemSchedulerConfig = Field(default_factory=MemSchedulerConfig)
     neo4j: Neo4jConfig = Field(default_factory=Neo4jConfig)
 
     @classmethod

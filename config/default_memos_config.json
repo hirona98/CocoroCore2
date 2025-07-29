@@ -10,6 +10,18 @@
   },
   "mos_config": {
     "user_id": "user",
+    "enable_mem_scheduler": true,
+    "mem_scheduler": {
+      "backend": "general_scheduler",
+      "config": {
+        "top_k": 5,
+        "top_n": 5,
+        "context_window_size": 5,
+        "enable_parallel_dispatch": false,
+        "thread_pool_max_workers": 3,
+        "consume_interval_seconds": 2
+      }
+    },
     "chat_model": {
       "backend": "openai",
       "config": {
@@ -110,42 +122,5 @@
     "java_home": "jre",
     "neo4j_home": "neo4j",
     "startup_timeout": 60
-  },
-  "mem_scheduler": {
-    "enabled": true,
-    "top_k": 5,
-    "context_window_size": 5,
-    "enable_act_memory_update": false,
-    "enable_parallel_dispatch": false,
-    "thread_pool_max_workers": 3,
-    "consume_interval_seconds": 2,
-    "act_mem_update_interval": 300,
-    "enable_chat_integration": true,
-    "enable_memory_integration": true,
-    "auto_submit_query": true,
-    "auto_submit_answer": true,
-    "enable_auto_optimization": true,
-    "auto_optimize_interval": 3600,
-    "auto_optimize_threshold": 50,
-    "max_concurrent_optimizations": 3,
-    "text_memory_optimization": {
-      "enable_deduplication": true,
-      "similarity_threshold": 0.95,
-      "working_memory_size": 20,
-      "long_term_memory_capacity": 10000,
-      "user_memory_capacity": 10000,
-      "graceful_degradation": true,
-      "log_scheduler_errors": true,
-      "auto_optimize_interval": 3600,
-      "auto_optimize_threshold": 50,
-      "max_concurrent_optimizations": 3,
-      "min_memory_length": 10,
-      "quality_score_threshold": 0.7,
-      "enable_background_optimization": true,
-      "optimization_batch_size": 100,
-      "similarity_analysis_enabled": true,
-      "reranking_enabled": true,
-      "memory_lifecycle_management": true
-    }
   }
 }
