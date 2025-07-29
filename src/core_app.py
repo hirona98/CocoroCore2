@@ -1,7 +1,6 @@
 """
-CocoroCore2 Core Application - MOS.simple() Version
+CocoroCore2 Core Application
 
-MemOS.simple()を使用したシンプルで確実な実装
 """
 
 import os
@@ -12,6 +11,7 @@ from typing import Any, Dict, Optional
 from memos.mem_os.main import MOS
 
 from config import CocoroCore2Config, get_mos_config
+from .core.neo4j_manager import Neo4jManager
 
 
 class CocoroCore2App:
@@ -57,6 +57,31 @@ class CocoroCore2App:
         self.is_running = False
         self.startup_time = datetime.now()
         
+        
+        # Neo4j組み込みサービス管理
+        self.neo4j_manager: Optional[Neo4jManager] = None
+        if config.neo4j.embedded_enabled:
+            try:
+                neo4j_config = {
+                    "uri": config.neo4j.uri,
+                    "user": config.neo4j.user,
+                    "password": config.neo4j.password,
+                    "db_name": config.neo4j.db_name,
+                    "embedded_enabled": config.neo4j.embedded_enabled,
+                    "java_home": config.neo4j.java_home,
+                    "neo4j_home": config.neo4j.neo4j_home,
+                    "startup_timeout": config.neo4j.startup_timeout
+                }
+                self.neo4j_manager = Neo4jManager(neo4j_config)
+                self.logger.info("Neo4j manager created for embedded mode")
+                
+            except Exception as e:
+                self.logger.error(f"Failed to create Neo4j manager: {e}")
+                self.neo4j_manager = None
+        else:
+            self.logger.info("Embedded Neo4j is disabled, expecting external Neo4j instance")
+        
+        
         self.logger.info("CocoroCore2App initialized with full MOS integration")
     
     def _setup_memos_environment(self):
@@ -67,7 +92,7 @@ class CocoroCore2App:
             
             # 環境変数設定
             os.environ["OPENAI_API_KEY"] = api_key
-            os.environ["MOS_TEXT_MEM_TYPE"] = "general_text"
+            os.environ["MOS_TEXT_MEM_TYPE"] = "tree_text"
             
             # 必要に応じて他の環境変数も設定
             if "OPENAI_API_BASE" not in os.environ:
@@ -80,10 +105,87 @@ class CocoroCore2App:
             self.logger.error(f"Failed to setup MemOS environment: {e}")
             raise
     
+    
+    def _get_user_memcube(self, user_id: str) -> Optional["GeneralMemCube"]:
+        """ユーザーのデフォルトMemCubeを取得
+        
+        Args:
+            user_id: ユーザーID
+            
+        Returns:
+            Optional[GeneralMemCube]: MemCubeインスタンス（見つからない場合はNone）
+        """
+        try:
+            # ユーザーの存在を確認・作成
+            self.ensure_user(user_id)
+            
+            # ユーザーのMemCubeリストを取得
+            user_cubes = self.mos.user_manager.get_user_cubes(user_id=user_id)
+            
+            if not user_cubes or len(user_cubes) == 0:
+                self.logger.warning(f"No MemCubes found for user {user_id}")
+                return None
+            
+            # 最初のMemCubeをデフォルトとして使用
+            default_cube = user_cubes[0]
+            cube_id = default_cube.cube_id
+            
+            # MOSのmem_cubesに登録されているかチェック
+            if cube_id in self.mos.mem_cubes:
+                self.logger.debug(f"Retrieved MemCube {cube_id} for user {user_id}")
+                return self.mos.mem_cubes[cube_id]
+            else:
+                # 登録されていない場合は警告ログ
+                self.logger.warning(f"MemCube {cube_id} found but not registered in MOS for user {user_id}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get MemCube for user {user_id}: {e}")
+            return None
+
+    def _get_user_memcube_id(self, user_id: str) -> Optional[str]:
+        """ユーザーのデフォルトMemCube IDを取得
+        
+        Args:
+            user_id: ユーザーID
+            
+        Returns:
+            Optional[str]: MemCube ID（見つからない場合はNone）
+        """
+        try:
+            user_cubes = self.mos.user_manager.get_user_cubes(user_id=user_id)
+            
+            if not user_cubes or len(user_cubes) == 0:
+                return None
+            
+            return user_cubes[0].cube_id
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get MemCube ID for user {user_id}: {e}")
+            return None
+
+    
     async def startup(self):
         """アプリケーション起動処理"""
         try:
             self.logger.info("Starting CocoroCore2App...")
+            
+            # Neo4j組み込みサービス起動（MOSより前に起動）
+            if self.neo4j_manager:
+                self.logger.info("Starting embedded Neo4j service...")
+                try:
+                    neo4j_started = await self.neo4j_manager.start()
+                    if neo4j_started:
+                        self.logger.info("Embedded Neo4j service started successfully")
+                    else:
+                        self.logger.error("Failed to start embedded Neo4j service")
+                        # Neo4j起動失敗は致命的エラーとして扱う（TreeTextMemoryに必要）
+                        raise RuntimeError("Neo4j startup failed - required for TreeTextMemory")
+                except Exception as e:
+                    self.logger.error(f"Neo4j startup error: {e}")
+                    raise
+            else:
+                self.logger.info("Embedded Neo4j is disabled - expecting external Neo4j")
             
             # デフォルトユーザーを作成
             try:
@@ -93,6 +195,9 @@ class CocoroCore2App:
                 # ユーザーが既に存在する場合はエラーを無視
                 self.logger.info(f"User {self.default_user_id} may already exist: {e}")
             
+            # MemCube確実に作成
+            self._ensure_user_memcube(self.default_user_id)
+            
             # テスト用のメモリ追加で動作確認
             try:
                 test_content = f"System startup at {datetime.now().isoformat()}"
@@ -100,6 +205,9 @@ class CocoroCore2App:
                 self.logger.info("MemOS functionality verified")
             except Exception as e:
                 self.logger.warning(f"MemOS test failed: {e}")
+                # MemCube作成を再試行
+                self.logger.info("Retrying MemCube creation...")
+                self._ensure_user_memcube(self.default_user_id)
             
             # 音声処理パイプラインの初期化（将来実装）
             if self.config.speech.enabled:
@@ -110,6 +218,7 @@ class CocoroCore2App:
             if self.config.mcp.enabled:
                 self.logger.info("MCP integration is enabled")
                 # await self.mcp_tools.initialize()
+            
             
             self.is_running = True
             self.logger.info("CocoroCore2App startup completed")
@@ -123,14 +232,44 @@ class CocoroCore2App:
         try:
             self.logger.info("Shutting down CocoroCore2App...")
             
+            
+            # MemCubeの永続化（Neo4j停止前に実行）
+            try:
+                self.logger.info("Persisting MemCubes...")
+                
+                # MOSに登録されている全MemCubeを永続化
+                import os
+                import shutil
+                for mem_cube_id in self.mos.mem_cubes.keys():  
+                    cube_dir = f".memos/user_cubes/{mem_cube_id}"  
+                    try:  
+                        if os.path.exists(cube_dir):  
+                            shutil.rmtree(cube_dir)  
+                        self.mos.dump(cube_dir, mem_cube_id=mem_cube_id)
+
+                    except Exception as e:
+                        self.logger.error(f"Failed to persist MemCube {mem_cube_id}: {e}")
+                
+                self.logger.info("MemCube persistence completed")
+            except Exception as e:
+                self.logger.error(f"Failed to persist MemCubes: {e}")
+            
             # 各コンポーネントのクリーンアップ
-            # 正規版MOSは特別なクリーンアップ不要
             
             # 音声処理パイプラインのクリーンアップ（将来実装）
             # await self.voice_pipeline.cleanup()
             
             # MCP統合のクリーンアップ（将来実装）
             # await self.mcp_tools.cleanup()
+            
+            # Neo4j組み込みサービス停止（最後に実行：dump完了後）
+            if self.neo4j_manager:
+                try:
+                    self.logger.info("Stopping embedded Neo4j service...")
+                    await self.neo4j_manager.stop()
+                    self.logger.info("Embedded Neo4j service stopped")
+                except Exception as e:
+                    self.logger.error(f"Failed to stop Neo4j service: {e}")
             
             self.is_running = False
             self.logger.info("CocoroCore2App shutdown completed")
@@ -162,7 +301,7 @@ class CocoroCore2App:
         return user_id
     
     def memos_chat(self, query: str, user_id: Optional[str] = None, context: Optional[Dict] = None, system_prompt: Optional[str] = None) -> str:
-        """MemOS純正チャット処理（同期）
+        """MemOS純正チャット処理（スケジューラー連携付き）
         
         Args:
             query: ユーザーの質問
@@ -190,13 +329,22 @@ class CocoroCore2App:
             # システムプロンプトをqueryに追加
             full_query = f"{effective_system_prompt}\n\n{query}"
             
+            
             # 正規版MOSでのチャット処理
             response = self.mos.chat(query=full_query, user_id=effective_user_id)
             
-            # コンテキスト情報を必要に応じて記憶に追加
-            if context:
-                context_content = f"Context for query '{query}': {context}"
-                self.add_memory(content=context_content, user_id=effective_user_id)
+            # 会話全体を記憶として保存（messagesフォーマット）
+            try:
+                messages = [
+                    {"role": "user", "content": query},
+                    {"role": "assistant", "content": response}
+                ]
+                # 会話の完全な記録を保存
+                self.mos.add(messages=messages, user_id=effective_user_id)
+                self.logger.debug(f"Saved conversation memory for user {effective_user_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to save conversation memory: {e}")
+            
             
             self.logger.debug(f"Chat response: {len(response)} characters")
             return response
@@ -205,37 +353,75 @@ class CocoroCore2App:
             self.logger.error(f"Chat failed: {e}")
             raise
     
-    def add_memory(self, content: str, user_id: Optional[str] = None, **context) -> None:
-        """記憶追加（同期）
+    def add_memory(self, content: str, user_id: Optional[str] = None, session_id: Optional[str] = None, **context) -> None:
+        """記憶追加（スケジューラー連携付き）
         
         Args:
             content: 記憶内容
             user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
+            session_id: セッションID（オプション）
             **context: 追加コンテキスト情報
         """
         try:
             # 有効なユーザーIDを決定
             effective_user_id = user_id or self.default_user_id
             
-            # コンテキスト情報を本文に含める
-            memory_content = content
-            if context:
-                import json
-                context_info = {
-                    "character": self.config.character.name,
-                    "timestamp": datetime.now().isoformat(),
-                    **context
-                }
-                memory_content += f" | Context: {json.dumps(context_info)}"
+            # messagesフォーマットで記憶を追加（memory_typeをより適切に制御するため）
+            messages = [
+                {"role": "user", "content": content},
+                {"role": "assistant", "content": "了解しました。この情報を記憶します。"}
+            ]
             
-            # 正規版MOSAPIで記憶追加
-            self.mos.add(memory_content=memory_content, user_id=effective_user_id)
+            # 正規版MOSAPIで記憶追加（messagesフォーマットを使用）
+            self.mos.add(messages=messages, user_id=effective_user_id)
+            
+            
             self.logger.debug(f"Memory added: {len(content)} characters")
             
         except Exception as e:
             self.logger.error(f"Failed to add memory: {e}")
             # メモリ保存の失敗はチャット機能全体を停止させない
-            self.logger.warning("Memory features may be temporarily disabled")
+
+    # ===========================================
+    # Phase 3: 最適化API機能
+    # ===========================================
+    
+    async def optimize_memory(
+        self, 
+        user_id: Optional[str] = None, 
+        optimization_type: str = "full",
+        force_optimization: bool = False
+    ) -> Dict[str, Any]:
+        """手動最適化実行API
+        
+        Args:
+            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
+            optimization_type: 最適化タイプ ("full", "dedup", "quality", "rerank")
+            force_optimization: 強制最適化フラグ
+            
+        Returns:
+            Dict[str, Any]: 最適化結果
+        """
+        effective_user_id = user_id or self.default_user_id
+        
+        if not self.text_memory_scheduler:
+            return {"success": False, "error": "Text memory scheduler not available"}
+        
+        try:
+            result = await self.text_memory_scheduler.optimize_text_memory(
+                user_id=effective_user_id,
+                optimization_type=optimization_type,
+                force_optimization=force_optimization
+            )
+            self.logger.info(f"Manual optimization completed for user {effective_user_id}: {optimization_type}")
+            return result
+        except Exception as e:
+            self.logger.error(f"Manual optimization failed for user {effective_user_id}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    
+    
+    
     
     def search_memory(self, query: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """記憶検索（同期）
@@ -327,10 +513,12 @@ class CocoroCore2App:
         mem_reader_config = mos_config["mem_reader"]["config"]
         embedder_config = mem_reader_config["embedder"]["config"]
         
-        # ベクトル次元数をembedderモデルから推定
+        # ベクトル次元数を設定ファイルから取得、フォールバック付き
         embedder_model = embedder_config["model_name_or_path"]
+
+        # モデルから次元数を推定
         if "text-embedding-3-large" in embedder_model:
-            vector_dimension = 1536  # text-embedding-3-largeでも1536次元を使用
+            vector_dimension = 3072
         elif "text-embedding-3-small" in embedder_model:
             vector_dimension = 1536
         elif "text-embedding-ada-002" in embedder_model:
@@ -340,16 +528,30 @@ class CocoroCore2App:
             vector_dimension = 1536
             self.logger.warning(f"Unknown embedder model {embedder_model}, using default dimension {vector_dimension}")
         
-        # MemCube設定を構築
+        self.logger.debug(f"Generated MemCube config for user {user_id}")
+        self.logger.debug(f"  - Embedder model: {embedder_model}")
+        self.logger.debug(f"  - Vector dimension: {vector_dimension} (from {'config' if getattr(self.config, 'embedder_config', {}).get('vector_dimension') else 'model-based fallback'})")
+        self.logger.debug(f"  - Chat model: {chat_model_config['model_name_or_path']}")
+        
+        # TreeTextMemory用のMemCube設定を構築
         cube_config = {
             "user_id": user_id,
             "cube_id": f"{user_id}_default_cube",
             "text_mem": {
-                "backend": "general_text",
+                "backend": "tree_text",
                 "config": {
                     "cube_id": f"{user_id}_default_cube",
-                    "memory_filename": "textual_memory.json",
+                    "memory_filename": "tree_textual_memory.json",
                     "extractor_llm": {
+                        "backend": mos_config["chat_model"]["backend"],
+                        "config": {
+                            "model_name_or_path": chat_model_config["model_name_or_path"],
+                            "temperature": 0.0,  # Memory用は固定値
+                            "api_key": chat_model_config["api_key"],
+                            "api_base": chat_model_config.get("api_base", "https://api.openai.com/v1")
+                        }
+                    },
+                    "dispatcher_llm": {
                         "backend": mos_config["chat_model"]["backend"],
                         "config": {
                             "model_name_or_path": chat_model_config["model_name_or_path"],
@@ -367,15 +569,18 @@ class CocoroCore2App:
                             "base_url": embedder_config.get("base_url", "https://api.openai.com/v1")
                         }
                     },
-                    "vector_db": {
-                        "backend": "qdrant",
+                    "graph_db": {
+                        "backend": "neo4j",
                         "config": {
-                            "collection_name": f"{user_id}_collection",
-                            "path": ".memos/qdrant",
-                            "distance_metric": "cosine",
-                            "vector_dimension": vector_dimension
+                            "uri": self.config.neo4j.uri,
+                            "user": self.config.neo4j.user,
+                            "password": self.config.neo4j.password,
+                            "db_name": self.config.neo4j.db_name,
+                            "auto_create": False,  # Community Editionでは強制的に無効
+                            "embedding_dimension": vector_dimension  # 動的に設定
                         }
-                    }
+                    },
+                    "reorganize": False  # 初期は無効
                 }
             },
             "act_mem": {},
@@ -395,6 +600,10 @@ class CocoroCore2App:
         Args:
             user_id: ユーザーID
         """
+        # 必要なインポート（再登録処理で使用）
+        from memos.configs.mem_cube import GeneralMemCubeConfig
+        from memos.mem_cube.general import GeneralMemCube
+        
         try:
             # ユーザーの既存MemCubeをチェック
             user_cubes = self.mos.user_manager.get_user_cubes(user_id=user_id)
@@ -404,20 +613,25 @@ class CocoroCore2App:
                 
                 # 既存のMemCubeがMOSに登録されているか確認
                 all_cubes_registered = True
+                import os
                 for cube in user_cubes:
                     cube_id = cube.cube_id
                     if cube_id not in self.mos.mem_cubes:
                         self.logger.info(f"Re-registering existing MemCube {cube_id} for user {user_id}")
                         try:
-                            # MemCubeをファイルから読み込んで再登録
-                            from memos.mem_cube.general import GeneralMemCube
-                            import os
+                            # TreeTextMemoryの場合、実際のデータはNeo4jに保存されている
+                            # MemCubeディレクトリからのロードを試行
                             cube_path = f".memos/user_cubes/{cube_id}"
+                            
                             if os.path.exists(cube_path):
-                                self.mos.register_mem_cube(cube_path, user_id=user_id)
-                                self.logger.info(f"Successfully re-registered MemCube {cube_id}")
+                                # パスから適切なcube_idを抽出してMemCubeをロード
+                                mem_cube = GeneralMemCube.init_from_dir(cube_path)
+                                # MemCubeオブジェクトを直接登録してIDの重複を回避
+                                self.mos.register_mem_cube(mem_cube, user_id=user_id)
+                                self.logger.info(f"Successfully re-registered MemCube from {cube_path}")
                             else:
-                                self.logger.warning(f"MemCube path not found: {cube_path}, will create new MemCube")
+                                # MemCubeディレクトリが存在しない場合は新規作成が必要
+                                self.logger.warning(f"MemCube directory not found: {cube_path}")
                                 all_cubes_registered = False
                                 break
                         except Exception as e:
@@ -435,9 +649,6 @@ class CocoroCore2App:
                 self.logger.info(f"Creating new MemCube for user {user_id} due to registration failures")
             
             # デフォルトMemCubeを作成
-            from memos.configs.mem_cube import GeneralMemCubeConfig
-            from memos.mem_cube.general import GeneralMemCube
-            
             # 設定ファイルからMemCube設定を動的に構築
             cube_config_dict = self._get_memcube_config_from_settings(user_id)
             
@@ -449,12 +660,16 @@ class CocoroCore2App:
             self.logger.info(f"Created MemCube with config cube_id: {cube_config.cube_id}")
             self.logger.info(f"Created MemCube actual cube_id: {mem_cube.config.cube_id}")
             
-            # MOSにMemCubeを直接登録
+            # MOSにMemCubeを直接登録（メモリ内管理）
             self.mos.register_mem_cube(mem_cube, user_id=user_id)
             
             # 登録後のMemCube確認
             registered_cubes = self.mos.user_manager.get_user_cubes(user_id)
-            self.logger.info(f"Registered cubes for user {user_id}: {[cube.cube_id for cube in registered_cubes]}")
+            registered_cube_ids = [cube.cube_id for cube in registered_cubes]
+            self.logger.info(f"Registered cubes for user {user_id}: {registered_cube_ids}")
+            
+            # MemCubeは正常にメモリ内に登録された（永続化はshutdown時に実行）
+            self.logger.debug("MemCube registered in memory, persistence will be handled at shutdown")
             
             self.logger.info(f"Created and registered default MemCube for user: {user_id}")
             
@@ -494,6 +709,7 @@ class CocoroCore2App:
                     "shell_integration": self.config.shell_integration.enabled,
                 }
             }
+            
             
             return status
             

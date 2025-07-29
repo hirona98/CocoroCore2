@@ -60,10 +60,19 @@ def setup_logging(config: CocoroCore2Config):
     except Exception as e:
         print(f"ファイルロガーの設定に失敗しました: {e}")
     
-    # uvicornロガーレベル調整
+    # ログレベル設定
     logging.getLogger("uvicorn").setLevel(logging.INFO)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    
+    logging.getLogger("neo4j").setLevel(logging.INFO)
+    logging.getLogger("neo4j.io").setLevel(logging.INFO)
+    logging.getLogger("neo4j.pool").setLevel(logging.INFO)
+    logging.getLogger("neo4j.notifications").setLevel(logging.WARNING)
 
+    logging.getLogger("httpcore.http11").setLevel(logging.INFO)
+    logging.getLogger("httpcore.connection").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.INFO)
+    logging.getLogger("memos.llms.openai").setLevel(logging.WARNING)
 
 # グローバル終了フラグ
 shutdown_event = asyncio.Event()

@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, validator
 
 # MemOS関連インポート（遅延インポートで対応）
 # from memos.configs.mem_os import MOSConfig
@@ -57,6 +57,45 @@ class SpeechConfig(BaseModel):
     stt: STTConfig = Field(default_factory=STTConfig)
 
 
+class Neo4jConfig(BaseModel):
+    """Neo4j接続設定"""
+    uri: str = "bolt://localhost:7687"
+    user: str = "neo4j"
+    password: str = "12345678"  # 開発環境デフォルト
+    db_name: str = "neo4j"
+    embedding_dimension: int = 3072  # text-embedding-3-large
+    
+    # 組み込みNeo4j設定
+    embedded_enabled: bool = True  # PyInstaller実行時の組み込みモード
+    java_home: str = "jre"  # JREディレクトリ（相対パス）
+    neo4j_home: str = "neo4j"  # Neo4jディレクトリ（相対パス）
+    startup_timeout: int = 60  # 起動タイムアウト（秒）
+    
+    @validator('password')
+    def validate_password(cls, v):
+        """パスワード検証"""
+        if not v or v == "changeme":
+            # 環境変数から取得を試みる
+            neo4j_password = os.environ.get("NEO4J_PASSWORD")
+            if neo4j_password:
+                return neo4j_password
+            # デフォルトパスワードの警告
+            import logging
+            logging.getLogger(__name__).warning(
+                "Using default Neo4j password. Please set NEO4J_PASSWORD environment variable."
+            )
+        return v
+    
+    @validator('startup_timeout')
+    def validate_startup_timeout(cls, v):
+        """起動タイムアウト検証"""
+        if v < 10:
+            raise ValueError("startup_timeout must be at least 10 seconds")
+        if v > 300:
+            raise ValueError("startup_timeout must not exceed 300 seconds")
+        return v
+
+
 class ShellIntegrationConfig(BaseModel):
     """CocoroShell統合設定"""
     enabled: bool = True
@@ -89,6 +128,7 @@ class SessionConfig(BaseModel):
     cleanup_interval_seconds: int = 30
 
 
+
 class CocoroCore2Config(BaseModel):
     """CocoroCore2統合設定"""
     version: str = "2.0.0"
@@ -101,6 +141,8 @@ class CocoroCore2Config(BaseModel):
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
+    embedder_config: Dict[str, Any] = Field(default_factory=dict)
+    neo4j: Neo4jConfig = Field(default_factory=Neo4jConfig)
 
     @classmethod
     def load(cls, config_path: Optional[str] = None, environment: str = "development") -> "CocoroCore2Config":
