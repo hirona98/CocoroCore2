@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from memos.mem_os.main import MOS
 
-from config import CocoroAIConfig, get_mos_config, load_memos_config, load_neo4j_config
+from config import CocoroAIConfig, get_mos_config, generate_memos_config_from_setting, load_neo4j_config
 from .core.neo4j_manager import Neo4jManager
 
 
@@ -32,11 +32,11 @@ class CocoroCore2App:
         # MOS初期化
         try:
             # MOSConfig作成
-            mos_config = get_mos_config()
+            mos_config = get_mos_config(config)
             self.mos = MOS(mos_config)
             
             # デフォルトユーザーID設定
-            memos_config_data = load_memos_config()
+            memos_config_data = generate_memos_config_from_setting(config)
             self.default_user_id = memos_config_data.get("user_id", "default")
             self.logger.info(f"MOS initialized successfully with user_id: {self.default_user_id}")
         except Exception as e:
@@ -72,11 +72,12 @@ class CocoroCore2App:
         """MOS用の環境変数を設定する"""
         try:
             # 設定ファイルからAPIキーを取得
-            memos_config_data = load_memos_config()
+            memos_config_data = generate_memos_config_from_setting(self.config)
             api_key = memos_config_data["chat_model"]["config"]["api_key"]
             
             # 環境変数設定
-            os.environ["OPENAI_API_KEY"] = api_key
+            if api_key:  # APIキーが設定されている場合のみ
+                os.environ["OPENAI_API_KEY"] = api_key
             os.environ["MOS_TEXT_MEM_TYPE"] = "tree_text"
             
             # 必要に応じて他の環境変数も設定
@@ -341,7 +342,7 @@ class CocoroCore2App:
             dict: MemCube設定辞書
         """
         # 設定ファイルから必要な値を取得
-        memos_config_data = load_memos_config()
+        memos_config_data = generate_memos_config_from_setting(self.config)
         chat_model_config = memos_config_data["chat_model"]["config"]
         mem_reader_config = memos_config_data["mem_reader"]["config"]
         embedder_config = mem_reader_config["embedder"]["config"]

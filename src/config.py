@@ -169,42 +169,74 @@ def substitute_env_variables(data: Any) -> Any:
         return data
 
 
-def load_memos_config() -> Dict[str, Any]:
-    """MemOS設定ファイルを読み込む
+def generate_memos_config_from_setting(cocoro_config: "CocoroAIConfig") -> Dict[str, Any]:
+    """Setting.jsonから動的にMemOS設定を生成する
     
+    Args:
+        cocoro_config: CocoroAI設定オブジェクト
+        
     Returns:
         Dict[str, Any]: MemOS設定データ
         
     Raises:
-        ConfigurationError: 設定ファイルが見つからない場合
+        ConfigurationError: 設定が不正な場合
     """
-    # 実行ディレクトリの決定
-    if getattr(sys, "frozen", False):
-        base_dir = Path(sys.executable).parent
-    else:
-        base_dir = Path(__file__).parent.parent
+    current_character = cocoro_config.current_character
+    if not current_character:
+        raise ConfigurationError("現在のキャラクターが見つかりません")
     
-    userdata_dir = base_dir.parent / "UserData2"
-    config_dir = base_dir / "config"
+    # LLMモデルとAPIキーをキャラクター設定から取得
+    llm_model = current_character.llmModel or "gpt-4o-mini"
+    api_key = current_character.apiKey or ""
     
-    # MemOS設定ファイルを検索（優先順位順）
-    search_paths = [
-        userdata_dir / "MemosSetting.json",     # ユーザー設定（優先）
-        config_dir / "MemosSetting.json",       # デフォルト設定
-    ]
+    # 埋め込みモデルとAPIキーをキャラクター設定から取得  
+    embedded_model = current_character.embeddedModel or "text-embedding-3-large"
+    embedded_api_key = current_character.embeddedApiKey or api_key  # APIキーが空なら通常のを使用
     
-    for config_path in search_paths:
-        if config_path.exists():
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config_data = json.load(f)
-                return substitute_env_variables(config_data)
-            except json.JSONDecodeError as e:
-                raise ConfigurationError(f"MemOS設定ファイルの形式が不正です ({config_path}): {e}")
-            except Exception as e:
-                raise ConfigurationError(f"MemOS設定ファイルの読み込みに失敗しました ({config_path}): {e}")
+    # MemOS設定を動的に構築
+    memos_config = {
+        "user_id": current_character.userId or "user",
+        "chat_model": {
+            "backend": "openai",
+            "config": {
+                "model_name_or_path": llm_model,
+                "api_key": api_key,
+                "api_base": "https://api.openai.com/v1"
+            }
+        },
+        "mem_reader": {
+            "backend": "simple_struct",
+            "config": {
+                "llm": {
+                    "backend": "openai",
+                    "config": {
+                        "model_name_or_path": llm_model,
+                        "temperature": 0.0,
+                        "api_key": api_key,
+                        "api_base": "https://api.openai.com/v1"
+                    }
+                },
+                "embedder": {
+                    "backend": "universal_api",
+                    "config": {
+                        "model_name_or_path": embedded_model,
+                        "provider": "openai",
+                        "api_key": embedded_api_key,
+                        "base_url": "https://api.openai.com/v1"
+                    }
+                },
+                "chunker": {
+                    "backend": "sentence",
+                    "config": {
+                        "chunk_size": 512,
+                        "chunk_overlap": 128
+                    }
+                }
+            }
+        }
+    }
     
-    raise ConfigurationError(f"MemOS設定ファイルが見つかりません。検索パス: {[str(p) for p in search_paths]}")
+    return memos_config
 
 
 def load_neo4j_config() -> Dict[str, Any]:
@@ -270,36 +302,12 @@ def create_mos_config_from_dict(mos_config_dict: Dict[str, Any]):
         raise ConfigurationError(f"MOSConfig作成に失敗しました: {e}")
 
 
-def load_mos_config_from_file(config_path: str):
-    """ファイルからMOSConfigオブジェクトを作成する
-    
-    Args:
-        config_path: 設定ファイルパス
-        
-    Returns:
-        MOSConfig: MOSConfigオブジェクト
-        
-    Raises:
-        ConfigurationError: 設定ファイル読み込みまたはMOSConfig作成に失敗した場合
-    """
-    try:
-        # 遅延インポートでMemOSの循環依存を回避
-        from memos.configs.mem_os import MOSConfig
-        
-        # ファイルから直接MOSConfigオブジェクトを作成
-        return MOSConfig.from_json_file(config_path)
-        
-    except ImportError as e:
-        raise ConfigurationError(f"MemOSライブラリが利用できません: {e}")
-    except Exception as e:
-        raise ConfigurationError(f"MOSConfig読み込みに失敗しました: {e}")
-
 
 def get_mos_config(config: "CocoroAIConfig" = None):
     """MOSConfigオブジェクトを取得する
     
     Args:
-        config: CocoroAI設定オブジェクト（使用しない、互換性のため）
+        config: CocoroAI設定オブジェクト（必須）
         
     Returns:
         MOSConfig: MOSConfigオブジェクト
@@ -307,5 +315,9 @@ def get_mos_config(config: "CocoroAIConfig" = None):
     Raises:
         ConfigurationError: MOSConfig作成に失敗した場合
     """
-    memos_config_data = load_memos_config()
+    if config is None:
+        # configが指定されていない場合は現在の設定を読み込む
+        config = CocoroAIConfig.load()
+    
+    memos_config_data = generate_memos_config_from_setting(config)
     return create_mos_config_from_dict(memos_config_data)
