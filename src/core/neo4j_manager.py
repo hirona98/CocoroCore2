@@ -130,57 +130,6 @@ class Neo4jManager:
         
         logger.info("Neo4jサービスの停止が完了しました")
     
-    async def get_driver(self):
-        """Neo4jドライバーを取得
-        
-        Returns:
-            neo4j.GraphDatabase.driver: Neo4jドライバー
-        """
-        if not NEO4J_DRIVER_AVAILABLE:
-            raise ImportError("neo4j-driver not available")
-            
-        if not self.driver:
-            try:
-                self.driver = GraphDatabase.driver(
-                    self.uri,
-                    auth=None  # 認証無効化（neo4j.confと一致）
-                )
-                # 接続テスト
-                await asyncio.get_event_loop().run_in_executor(
-                    None, self.driver.verify_connectivity
-                )
-            except Exception as e:
-                logger.error(f"Neo4jドライバー作成エラー: {e}")
-                raise
-                
-        return self.driver
-    
-    async def health_check(self) -> bool:
-        """ヘルスチェック
-        
-        Returns:
-            bool: 正常時True
-        """
-        try:
-            if not NEO4J_DRIVER_AVAILABLE:
-                return False
-                
-            driver = await self.get_driver()
-            
-            def _run_query():
-                with driver.session() as session:
-                    result = session.run("RETURN 1 AS num")
-                    record = result.single()
-                    return record["num"] == 1
-            
-            return await asyncio.get_event_loop().run_in_executor(
-                None, _run_query
-            )
-            
-        except Exception as e:
-            logger.warning(f"Neo4jヘルスチェック失敗: {e}")
-            return False
-    
     def _setup_environment(self) -> bool:
         """JRE環境を設定
         

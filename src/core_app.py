@@ -91,65 +91,6 @@ class CocoroCore2App:
             raise
     
     
-    def _get_user_memcube(self, user_id: str) -> Optional["GeneralMemCube"]:
-        """ユーザーのデフォルトMemCubeを取得
-        
-        Args:
-            user_id: ユーザーID
-            
-        Returns:
-            Optional[GeneralMemCube]: MemCubeインスタンス（見つからない場合はNone）
-        """
-        try:
-            # ユーザーの存在を確認・作成
-            self.ensure_user(user_id)
-            
-            # ユーザーのMemCubeリストを取得
-            user_cubes = self.mos.user_manager.get_user_cubes(user_id=user_id)
-            
-            if not user_cubes or len(user_cubes) == 0:
-                self.logger.warning(f"No MemCubes found for user {user_id}")
-                return None
-            
-            # 最初のMemCubeをデフォルトとして使用
-            default_cube = user_cubes[0]
-            cube_id = default_cube.cube_id
-            
-            # MOSのmem_cubesに登録されているかチェック
-            if cube_id in self.mos.mem_cubes:
-                self.logger.debug(f"Retrieved MemCube {cube_id} for user {user_id}")
-                return self.mos.mem_cubes[cube_id]
-            else:
-                # 登録されていない場合は警告ログ
-                self.logger.warning(f"MemCube {cube_id} found but not registered in MOS for user {user_id}")
-                return None
-                
-        except Exception as e:
-            self.logger.error(f"Failed to get MemCube for user {user_id}: {e}")
-            return None
-
-    def _get_user_memcube_id(self, user_id: str) -> Optional[str]:
-        """ユーザーのデフォルトMemCube IDを取得
-        
-        Args:
-            user_id: ユーザーID
-            
-        Returns:
-            Optional[str]: MemCube ID（見つからない場合はNone）
-        """
-        try:
-            user_cubes = self.mos.user_manager.get_user_cubes(user_id=user_id)
-            
-            if not user_cubes or len(user_cubes) == 0:
-                return None
-            
-            return user_cubes[0].cube_id
-            
-        except Exception as e:
-            self.logger.error(f"Failed to get MemCube ID for user {user_id}: {e}")
-            return None
-
-    
     async def startup(self):
         """アプリケーション起動処理"""
         try:
@@ -243,29 +184,6 @@ class CocoroCore2App:
         except Exception as e:
             self.logger.error(f"Error during shutdown: {e}")
     
-    def get_user_from_session(self, session_id: str, default_user_id: Optional[str] = None) -> str:
-        """セッションIDからユーザーIDを取得する
-        
-        Args:
-            session_id: セッションID
-            default_user_id: デフォルトユーザーID
-            
-        Returns:
-            str: ユーザーID
-        """
-        if session_id in self.session_mapping:
-            return self.session_mapping[session_id]
-        
-        # セッションIDが未登録の場合、デフォルトユーザーIDを使用
-        if default_user_id is None:
-            default_user_id = self.default_user_id
-        
-        user_id = default_user_id
-        self.session_mapping[session_id] = user_id
-        
-        self.logger.info(f"Mapped session {session_id} to user {user_id}")
-        return user_id
-    
     def memos_chat(self, query: str, user_id: Optional[str] = None, context: Optional[Dict] = None, system_prompt: Optional[str] = None) -> str:
         """MemOS純正チャット処理（スケジューラー連携付き）
         
@@ -337,40 +255,6 @@ class CocoroCore2App:
         except Exception as e:
             self.logger.error(f"Failed to add memory: {e}")
             # メモリ保存の失敗はチャット機能全体を停止させない
-    
-    async def optimize_memory(
-        self, 
-        user_id: Optional[str] = None, 
-        optimization_type: str = "full",
-        force_optimization: bool = False
-    ) -> Dict[str, Any]:
-        """手動最適化実行API
-        
-        Args:
-            user_id: ユーザーID（Noneの場合はデフォルトユーザーを使用）
-            optimization_type: 最適化タイプ ("full", "dedup", "quality", "rerank")
-            force_optimization: 強制最適化フラグ
-            
-        Returns:
-            Dict[str, Any]: 最適化結果
-        """
-        effective_user_id = user_id or self.default_user_id
-        
-        if not self.text_memory_scheduler:
-            return {"success": False, "error": "Text memory scheduler not available"}
-        
-        try:
-            result = await self.text_memory_scheduler.optimize_text_memory(
-                user_id=effective_user_id,
-                optimization_type=optimization_type,
-                force_optimization=force_optimization
-            )
-            self.logger.info(f"Manual optimization completed for user {effective_user_id}: {optimization_type}")
-            return result
-        except Exception as e:
-            self.logger.error(f"Manual optimization failed for user {effective_user_id}: {e}")
-            return {"success": False, "error": str(e)}
-    
     
     def search_memory(self, query: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """記憶検索（同期）
