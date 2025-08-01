@@ -32,15 +32,10 @@ class Neo4jManager:
     def __init__(self, config: Dict[str, Any]):
         """
         Args:
-            config: Neo4j設定辞書
-                - uri: Neo4j接続URI
-                - user: ユーザー名
-                - password: パスワード
-                - db_name: データベース名
-                - embedded_enabled: 組み込みモード有効
-                - java_home: JREホームディレクトリ（相対パス）
-                - neo4j_home: Neo4jホームディレクトリ（相対パス）
-                - startup_timeout: 起動タイムアウト（秒）
+            config: Neo4j設定辞書（Setting.jsonから動的生成）
+                - uri: Neo4j接続URI (bolt://127.0.0.1:{cocoroMemoryDBPort})
+                - web_port: Neo4j Web UIポート (cocoroMemoryWebPort)
+                - embedded_enabled: 組み込みモード (characterList[currentCharacterIndex].isEnableMemory)
         """
         self.config = config
         self.process: Optional[subprocess.Popen] = None
@@ -55,16 +50,14 @@ class Neo4jManager:
             # 開発時
             self.base_dir = Path(__file__).parent.parent.parent
             
-        self.java_home = self.base_dir / config.get("java_home", "jre")
-        self.neo4j_home = self.base_dir / config.get("neo4j_home", "neo4j")
+        self.java_home = self.base_dir / "jre"
+        self.neo4j_home = self.base_dir / "neo4j"
         
         # 接続設定（IPv4固定）
         original_uri = config.get("uri", "bolt://localhost:7687")
         self.uri = original_uri.replace("localhost", "127.0.0.1")  # IPv4に固定
-        self.user = config.get("user", "neo4j")
-        self.password = config.get("password", "neo4j")
-        self.db_name = config.get("db_name", "neo4j")
-        self.startup_timeout = config.get("startup_timeout", 60)
+        self.web_port = config.get("web_port", 55606)  # WebUIポート
+        self.startup_timeout = 30
         
         # 組み込みモード設定
         self.embedded_enabled = config.get("embedded_enabled", True)
@@ -157,10 +150,87 @@ class Neo4jManager:
             logger.info(f"Java環境を設定: JAVA_HOME={self.java_home}")
             logger.info(f"Neo4j環境を設定: NEO4J_HOME={self.neo4j_home}")
             
+            # Neo4j設定ファイルを最適な方法で更新
+            if not self._update_neo4j_config_minimal():
+                logger.error("Neo4j設定ファイルの更新に失敗しました")
+                return False
+            
             return True
             
         except Exception as e:
             logger.error(f"環境設定エラー: {e}")
+            return False
+    
+    def _update_neo4j_config_minimal(self) -> bool:
+        """Neo4j設定ファイルを最小限の変更で更新
+        
+        設定ファイル書き換え方式を使用。以下の設定を動的に更新：
+        - server.bolt.listen_address（Boltコネクタのポート）
+        - server.http.listen_address（WebUIのポート）
+        - server.http.enabled（WebUIを有効化）
+        
+        Returns:
+            bool: 更新成功時True
+        """
+        try:
+            config_path = self.neo4j_home / "conf" / "neo4j.conf"
+            if not config_path.exists():
+                logger.error(f"Neo4j設定ファイルが見つかりません: {config_path}")
+                return False
+            
+            # URIからBoltポート番号を抽出
+            port = 7687  # デフォルト
+            if ":" in self.uri:
+                port_str = self.uri.split(":")[-1]
+                if "/" in port_str:
+                    port_str = port_str.split("/")[0]
+                port = int(port_str)
+            
+            # 現在の設定を読み込み
+            with open(config_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # 期待する設定値
+            expected_bolt = f"server.bolt.listen_address=127.0.0.1:{port}"
+            expected_http = f"server.http.listen_address=127.0.0.1:{self.web_port}"
+            expected_http_enabled = "server.http.enabled=true"
+            
+            # 既に正しい設定の場合は更新をスキップ（効率化）
+            if (expected_bolt in content and 
+                expected_http in content and 
+                expected_http_enabled in content):
+                logger.info("Neo4j設定は既に最適化されています（更新スキップ）")
+                return True
+            
+            # 必要な場合のみ行単位で設定を更新
+            lines = content.splitlines()
+            updated_lines = []
+            
+            for line in lines:
+                line_stripped = line.strip()
+                
+                if line_stripped.startswith("server.bolt.listen_address"):
+                    updated_lines.append(expected_bolt)
+                    logger.info(f"Boltポートを {port} に更新")
+                elif line_stripped.startswith("server.http.enabled"):
+                    updated_lines.append(expected_http_enabled)
+                    logger.info("HTTPサーバーを有効化")
+                elif (line_stripped.startswith("#server.http.listen_address") or 
+                      line_stripped.startswith("server.http.listen_address")):
+                    updated_lines.append(expected_http)
+                    logger.info(f"HTTPポートを {self.web_port} に設定")
+                else:
+                    updated_lines.append(line)
+            
+            # ファイルに書き戻し
+            with open(config_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(updated_lines) + '\n')
+            
+            logger.info("Neo4j設定ファイルの最適化が完了しました")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Neo4j設定ファイル更新エラー: {e}")
             return False
     
     def _check_port_available(self) -> bool:

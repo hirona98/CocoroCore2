@@ -240,7 +240,7 @@ def generate_memos_config_from_setting(cocoro_config: "CocoroAIConfig") -> Dict[
 
 
 def load_neo4j_config() -> Dict[str, Any]:
-    """Neo4j設定ファイルを読み込む
+    """Neo4j設定をSetting.jsonから動的に生成する
     
     Returns:
         Dict[str, Any]: Neo4j設定データ
@@ -255,26 +255,43 @@ def load_neo4j_config() -> Dict[str, Any]:
         base_dir = Path(__file__).parent.parent
     
     userdata_dir = base_dir.parent / "UserData2"
-    config_dir = base_dir / "config"
     
-    # Neo4j設定ファイルを検索（優先順位順）
-    search_paths = [
-        userdata_dir / "Neo4jSetting.json",     # ユーザー設定（優先）
-        config_dir / "Neo4jSetting.json",       # デフォルト設定
-    ]
+    # Setting.jsonから設定を読み込み
+    try:
+        setting_path = userdata_dir / "Setting.json"
+        if not setting_path.exists():
+            raise ConfigurationError(f"Setting.jsonが見つかりません: {setting_path}")
+        
+        with open(setting_path, "r", encoding="utf-8") as f:
+            setting_data = json.load(f)
+        
+        # Neo4j設定を動的に生成
+        current_char_index = setting_data.get("currentCharacterIndex", 0)
+        character_list = setting_data.get("characterList", [])
+        
+        # embedded_enabledの決定
+        if current_char_index < len(character_list):
+            current_char = character_list[current_char_index]
+            embedded_enabled = current_char.get("isEnableMemory", False)
+        else:
+            embedded_enabled = False
+        
+        # URIの生成
+        memory_db_port = setting_data.get("cocoroMemoryDBPort", 7687)
+        memory_web_port = setting_data.get("cocoroMemoryWebPort", 55606)
+        uri = f"bolt://127.0.0.1:{memory_db_port}"
+        
+        # Neo4j設定辞書を作成
+        neo4j_config = {
+            "uri": uri,
+            "web_port": memory_web_port,
+            "embedded_enabled": embedded_enabled
+        }
+        
+    except Exception as e:
+        raise ConfigurationError(f"Setting.jsonの処理に失敗しました: {e}")
     
-    for config_path in search_paths:
-        if config_path.exists():
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config_data = json.load(f)
-                return substitute_env_variables(config_data)
-            except json.JSONDecodeError as e:
-                raise ConfigurationError(f"Neo4j設定ファイルの形式が不正です ({config_path}): {e}")
-            except Exception as e:
-                raise ConfigurationError(f"Neo4j設定ファイルの読み込みに失敗しました ({config_path}): {e}")
-    
-    raise ConfigurationError(f"Neo4j設定ファイルが見つかりません。検索パス: {[str(p) for p in search_paths]}")
+    return substitute_env_variables(neo4j_config)
 
 
 def create_mos_config_from_dict(mos_config_dict: Dict[str, Any]):

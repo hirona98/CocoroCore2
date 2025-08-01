@@ -53,10 +53,10 @@ class CocoroCore2App:
         
         # Neo4j組み込みサービス管理
         self.neo4j_manager: Optional[Neo4jManager] = None
-        neo4j_settings = load_neo4j_config()
-        if neo4j_settings.get("embedded_enabled", False):
+        self.neo4j_settings = load_neo4j_config()
+        if self.neo4j_settings.get("embedded_enabled", False):
             try:
-                self.neo4j_manager = Neo4jManager(neo4j_settings)
+                self.neo4j_manager = Neo4jManager(self.neo4j_settings)
                 self.logger.info("Neo4j manager created for embedded mode")
                 
             except Exception as e:
@@ -346,7 +346,9 @@ class CocoroCore2App:
         chat_model_config = memos_config_data["chat_model"]["config"]
         mem_reader_config = memos_config_data["mem_reader"]["config"]
         embedder_config = mem_reader_config["embedder"]["config"]
-        neo4j_settings = load_neo4j_config()
+        # 保存されたNeo4j設定を再利用
+        neo4j_settings = self.neo4j_settings
+        self.logger.info(f"Using Neo4j URI for MemCube: {neo4j_settings.get('uri', 'NOT_SET')}")
         
         # ベクトル次元数を設定ファイルから取得、フォールバック付き
         embedder_model = embedder_config["model_name_or_path"]
@@ -407,12 +409,12 @@ class CocoroCore2App:
                     "graph_db": {
                         "backend": "neo4j",
                         "config": {
-                            "uri": neo4j_settings.get("uri", "bolt://127.0.0.1:7687"),
-                            "user": neo4j_settings.get("user", "neo4j"),
-                            "password": neo4j_settings.get("password", "12345678"),
-                            "db_name": neo4j_settings.get("db_name", "neo4j"),
+                            "uri": neo4j_settings["uri"],  # Setting.jsonから動的生成された値
+                            "user": "neo4j",  # 固定値（認証無効なので実際は使用されない）
+                            "password": "password",  # 固定値（認証無効なので実際は使用されない）
+                            "db_name": "neo4j",  # 固定値
                             "auto_create": False,  # Community Editionでは強制的に無効
-                            "embedding_dimension": vector_dimension  # 動的に設定
+                            "embedding_dimension": vector_dimension  # モデルから動的算出
                         }
                     },
                     "reorganize": False  # 初期は無効
