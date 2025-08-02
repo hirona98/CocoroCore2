@@ -67,6 +67,41 @@ class CocoroCore2App:
 
         self.logger.info("CocoroCore2App initialized with full MOS integration")
 
+    def _log_advanced_features_status(self):
+        """MemOS高度機能の状態をログ出力"""
+        self.logger.info("============================================================")
+        self.logger.info("🚀 MemOS Advanced Features Status")
+        self.logger.info("============================================================")
+
+        # Phase 1: 文脈依存クエリ対応
+        if self.config.enable_query_rewriting:
+            self.logger.info("✅ Query Rewriting: ENABLED - 文脈依存クエリの自動書き換え")
+        else:
+            self.logger.info("❌ Query Rewriting: DISABLED")
+
+        # Phase 2: PRO_MODE (Chain of Thought)
+        if self.config.enable_pro_mode:
+            self.logger.info("✅ PRO_MODE (Chain of Thought): ENABLED - 複雑クエリの自動分解・統合処理")
+            self.logger.info("   📝 複雑なクエリを1-3個のサブクエリに分解して並列処理します")
+            self.logger.info("   🔗 結果を統合して包括的な回答を生成します")
+        else:
+            self.logger.info("❌ PRO_MODE (Chain of Thought): DISABLED")
+
+        # Internet Retrieval
+        if self.config.enable_internet_retrieval:
+            self.logger.info("✅ Internet Retrieval: ENABLED - リアルタイム情報取得")
+        else:
+            self.logger.info("❌ Internet Retrieval: DISABLED")
+
+        # Memory Scheduler
+        if self.config.enable_memory_scheduler:
+            self.logger.info("✅ Memory Scheduler: ENABLED - バックグラウンドメモリ処理")
+        else:
+            self.logger.info("❌ Memory Scheduler: DISABLED")
+
+        self.logger.info(f"📊 会話履歴保持数: {self.config.max_turns_window}ターン")
+        self.logger.info("============================================================")
+
     def _setup_memos_environment(self):
         """MOS用の環境変数を設定する"""
         try:
@@ -135,6 +170,10 @@ class CocoroCore2App:
                 self._ensure_user_memcube(self.default_user_id)
 
             self.is_running = True
+
+            # MemOS高度機能の状態表示
+            self._log_advanced_features_status()
+
             self.logger.info("CocoroCore2App startup completed")
 
         except Exception as e:
@@ -213,6 +252,12 @@ class CocoroCore2App:
                 except Exception as e:
                     self.logger.warning(f"🔄 [Query Rewrite] Failed: {e}, using original query")
                     processed_query = query
+
+            # Phase 2: PRO_MODE (Chain of Thought) 機能状態ログ
+            if self.config.enable_pro_mode:
+                self.logger.info("⚡ [PRO_MODE] Chain of Thought processing enabled for complex queries")
+            else:
+                self.logger.debug("⚡ [PRO_MODE] Chain of Thought processing disabled")
 
             # システムプロンプトをprocessed_queryに追加
             full_query = f"{system_prompt}\n\n{processed_query}" if system_prompt else processed_query

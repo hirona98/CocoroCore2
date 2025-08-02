@@ -223,6 +223,9 @@ def generate_memos_config_from_setting(cocoro_config: "CocoroAIConfig") -> Dict[
         "enable_activation_memory": False,  # API経由LLMでは無効
         "enable_mem_scheduler": cocoro_config.enable_memory_scheduler,
         "top_k": 5,
+        # PRO_MODE (Chain of Thought) 設定
+        "enable_cot": cocoro_config.enable_pro_mode,
+        "cot_top_k": 3,  # CoT用のtop_k設定
     }
 
     return memos_config
