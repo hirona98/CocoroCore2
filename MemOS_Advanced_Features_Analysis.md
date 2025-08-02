@@ -34,7 +34,7 @@ MemOSには多くの高度機能が存在するが、CocoroCore2では活用さ�
 #### 2. 会話履歴管理
 - **機能**: `chat_history_manager`
 - **説明**: ユーザーごとの会話履歴を保持・管理
-- **設定**: `max_turns_window` で履歴保持数を制御（デフォルト15）
+- **設定**: `max_turns_window` で履歴保持数を制御（デフォルト20）
 - **構造**: `ChatHistory` クラスによる履歴管理
 
 ### 【高価値】高度処理機能
@@ -94,7 +94,7 @@ MemOSには多くの高度機能が存在するが、CocoroCore2では活用さ�
 class MOSConfig:
     PRO_MODE: bool = False                    # CoT機能
     enable_mem_scheduler: bool = False        # メモリスケジューラー
-    max_turns_window: int = 15               # 会話履歴数
+    max_turns_window: int = 20               # 会話履歴数
     mem_scheduler: SchedulerConfigFactory    # スケジューラー設定
     # 注: activation_memory, parametric_memoryはローカルモデル専用のため除外
 ```
