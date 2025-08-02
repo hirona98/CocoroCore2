@@ -216,12 +216,12 @@ async def main():
         # 設定読み込み
         try:
             if args.config_file:
-                config = CocoroAIConfig.load(args.config_file, args.environment)
+                config = CocoroAIConfig.load(args.config_file)
                 print(f"設定ファイル読み込み: {args.config_file}")
             else:
-                config = CocoroAIConfig.load(environment=args.environment)
+                config = CocoroAIConfig.load()
                 from src.config import find_config_file
-                config_path = find_config_file(args.environment)
+                config_path = find_config_file()
                 print(f"設定ファイル読み込み: {config_path}")
         except ConfigurationError as e:
             print(f"設定エラー: {e}")
