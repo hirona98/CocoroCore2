@@ -94,18 +94,17 @@ class CocoroAIConfig(BaseModel):
         return char.modelName if char else "つくよみちゃん"
 
     @classmethod
-    def load(cls, config_path: Optional[str] = None, environment: str = "development") -> "CocoroAIConfig":
+    def load(cls, config_path: Optional[str] = None) -> "CocoroAIConfig":
         """設定ファイルから設定を読み込む
 
         Args:
             config_path: 設定ファイルパス（指定がない場合は自動検索）
-            environment: 環境名（development/production）
 
         Returns:
             CocoroAIConfig: 設定オブジェクト
         """
         if config_path is None:
-            config_path = find_config_file(environment)
+            config_path = find_config_file()
 
         # 設定ファイル読み込み
         with open(config_path, "r", encoding="utf-8") as f:
@@ -131,18 +130,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="CocoroCore2設定ローダー")
     parser.add_argument("--config-dir", "-c", help="設定ファイルのディレクトリパス")
     parser.add_argument("--config-file", "-f", help="設定ファイルパス")
-    parser.add_argument("--environment", "-e", default="development", choices=["development", "production"], help="実行環境")
     return parser.parse_args()
 
 
-def find_config_file(environment: str = "development") -> str:
+def find_config_file() -> str:
     """CocoroAI設定ファイルを自動検索する
 
     検索順序:
     1. ../UserData2/Setting.json (統合設定ファイル)
-
-    Args:
-        environment: 環境名
 
     Returns:
         str: 設定ファイルパス
