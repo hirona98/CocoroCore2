@@ -4,6 +4,7 @@ CocoroCore2 Core Application
 """
 
 import os
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -185,8 +186,8 @@ class CocoroCore2App:
         except Exception as e:
             self.logger.error(f"Error during shutdown: {e}")
     
-    def memos_chat(self, query: str, user_id: Optional[str] = None, context: Optional[Dict] = None, system_prompt: Optional[str] = None) -> str:
-        """MemOS純正チャット処理（スケジューラー連携付き）
+    async def memos_chat(self, query: str, user_id: Optional[str] = None, context: Optional[Dict] = None, system_prompt: Optional[str] = None) -> str:
+        """MemOS純正チャット処理（高速応答・非同期記憶保存）
         
         Args:
             query: ユーザーの質問
@@ -195,7 +196,7 @@ class CocoroCore2App:
             system_prompt: システムプロンプト（キャラクター設定）
             
         Returns:
-            str: AIの応答
+            str: AIの応答（記憶保存はバックグラウンドで実行）
         """
         try:
             # 有効なユーザーIDを決定
@@ -204,29 +205,34 @@ class CocoroCore2App:
             # システムプロンプトをqueryに追加
             full_query = f"{system_prompt}\n\n{query}"
             
-            
-            # MOSでのチャット処理
+            # MOSでのチャット処理（応答生成）
             response = self.mos.chat(query=full_query, user_id=effective_user_id)
             
-            # 会話全体を記憶として保存（messagesフォーマット）
-            try:
-                messages = [
-                    {"role": "user", "content": query},
-                    {"role": "assistant", "content": response}
-                ]
-                # 会話の完全な記録を保存
-                self.mos.add(messages=messages, user_id=effective_user_id)
-                self.logger.debug(f"Saved conversation memory for user {effective_user_id}")
-            except Exception as e:
-                self.logger.warning(f"Failed to save conversation memory: {e}")
+            # 応答をすぐに返却する前に、記憶保存をバックグラウンドタスクとして開始
+            messages = [
+                {"role": "user", "content": query},
+                {"role": "assistant", "content": response}
+            ]
             
+            # 記憶保存を非同期で実行（応答返却をブロックしない）
+            asyncio.create_task(self._save_conversation_memory_async(messages, effective_user_id))
             
-            self.logger.debug(f"Chat response: {len(response)} characters")
+            self.logger.debug(f"Chat response: {len(response)} characters (memory saving in background)")
             return response
             
         except Exception as e:
             self.logger.error(f"Chat failed: {e}")
             raise
+    
+    async def _save_conversation_memory_async(self, messages, user_id: str):
+        """会話記憶の非同期保存処理（バックグラウンドタスク）"""
+        try:
+            # asyncio.to_thread() を使用してブロッキング処理を別スレッドで実行
+            await asyncio.to_thread(self.mos.add, messages=messages, user_id=user_id)
+            self.logger.debug(f"✅ Memory saved asynchronously for user {user_id}")
+        except Exception as e:
+            # バックグラウンドタスクなので例外を上に伝播せず、ログ出力のみ
+            self.logger.warning(f"❌ Failed to save conversation memory asynchronously: {e}")
     
     def add_memory(self, content: str, user_id: Optional[str] = None, session_id: Optional[str] = None, **context) -> None:
         """記憶追加（スケジューラー連携付き）

@@ -150,8 +150,8 @@ class NotificationService:
             # セッション管理
             session = self.session_manager.ensure_session(request.session_id, request.user_id)
             
-            # MemOSに直接送信
-            response = self.core_app.memos_chat(
+            # MemOSに直接送信（非同期）
+            response = await self.core_app.memos_chat(
                 query=request.text,
                 user_id=request.user_id,
                 context=request.metadata

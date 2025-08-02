@@ -102,8 +102,8 @@ async def unified_chat(
         import uuid
         context_id = request.context_id or str(uuid.uuid4())
         
-        # MemOSに直接アクセス
-        response = core_app.memos_chat(
+        # MemOSに直接アクセス（非同期）
+        response = await core_app.memos_chat(
             query=request.message,
             user_id=request.user_id,
             system_prompt=request.system_prompt
@@ -145,8 +145,8 @@ async def memos_chat(
         if request.context and "system_prompt" in request.context:
             system_prompt = request.context["system_prompt"]
         
-        # MemOSから直接レスポンス取得
-        response = core_app.memos_chat(
+        # MemOSから直接レスポンス取得（非同期）
+        response = await core_app.memos_chat(
             query=request.query,
             user_id=request.user_id,
             context=request.context,
