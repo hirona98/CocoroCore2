@@ -68,38 +68,29 @@ class CocoroCore2App:
         self.logger.info("CocoroCore2App initialized with full MOS integration")
 
     def _log_advanced_features_status(self):
-        """MemOS高度機能の状態をログ出力"""
+        """CocoroCore2で有効化されたMemOS機能の状態をログ出力"""
         self.logger.info("============================================================")
-        self.logger.info("🚀 MemOS Advanced Features Status")
+        self.logger.info("📋 CocoroCore2 MemOS Integration Status")
         self.logger.info("============================================================")
 
         # Phase 1: 文脈依存クエリ対応
-        if self.config.enable_query_rewriting:
-            self.logger.info("✅ Query Rewriting: ENABLED - 文脈依存クエリの自動書き換え")
-        else:
-            self.logger.info("❌ Query Rewriting: DISABLED")
+        query_status = "✅ ENABLED" if self.config.enable_query_rewriting else "❌ DISABLED"
+        self.logger.info(f"🔄 Query Rewriting: {query_status}")
 
-        # Phase 2: PRO_MODE (Chain of Thought)
-        if self.config.enable_pro_mode:
-            self.logger.info("✅ PRO_MODE (Chain of Thought): ENABLED - 複雑クエリの自動分解・統合処理")
-            self.logger.info("   📝 複雑なクエリを1-3個のサブクエリに分解して並列処理します")
-            self.logger.info("   🔗 結果を統合して包括的な回答を生成します")
-        else:
-            self.logger.info("❌ PRO_MODE (Chain of Thought): DISABLED")
-
-        # Internet Retrieval
+        # Phase 2: Internet Retrieval
         if self.config.enable_internet_retrieval:
-            self.logger.info("✅ Internet Retrieval: ENABLED - リアルタイム情報取得")
+            if self.config.googleApiKey and self.config.googleSearchEngineId:
+                self.logger.info(f"🌐 Internet Retrieval: ✅ ENABLED ({self.config.internetMaxResults}件)")
+            else:
+                self.logger.info("🌐 Internet Retrieval: ⚠️ 設定不完全")
         else:
-            self.logger.info("❌ Internet Retrieval: DISABLED")
+            self.logger.info("🌐 Internet Retrieval: ❌ DISABLED")
 
         # Memory Scheduler
-        if self.config.enable_memory_scheduler:
-            self.logger.info("✅ Memory Scheduler: ENABLED - バックグラウンドメモリ処理")
-        else:
-            self.logger.info("❌ Memory Scheduler: DISABLED")
+        scheduler_status = "✅ ENABLED" if self.config.enable_memory_scheduler else "❌ DISABLED"
+        self.logger.info(f"⚙️ Memory Scheduler: {scheduler_status}")
 
-        self.logger.info(f"📊 会話履歴保持数: {self.config.max_turns_window}ターン")
+        self.logger.info(f"💭 会話履歴保持: {self.config.max_turns_window}ターン")
         self.logger.info("============================================================")
 
     def _setup_memos_environment(self):
@@ -238,38 +229,14 @@ class CocoroCore2App:
             # 有効なユーザーIDを決定
             effective_user_id = user_id or self.default_user_id
 
-            # Phase 1: 文脈依存クエリ書き換え機能
-            processed_query = query
-            if self.config.enable_query_rewriting:
-                try:
-                    # get_query_rewrite機能を使用してクエリを書き換え
-                    rewritten_query = self.mos.get_query_rewrite(query=query, user_id=effective_user_id)
-                    if rewritten_query and rewritten_query != query:
-                        processed_query = rewritten_query
-                        self.logger.info(f"🔄 [Query Rewrite] '{query}' → '{processed_query}'")
-                    else:
-                        self.logger.debug(f"🔄 [Query Rewrite] No rewriting needed for: '{query}'")
-                except Exception as e:
-                    self.logger.warning(f"🔄 [Query Rewrite] Failed: {e}, using original query")
-                    processed_query = query
-
-            # Phase 2: PRO_MODE (Chain of Thought) 機能状態ログ
-            if self.config.enable_pro_mode:
-                self.logger.info("⚡ [PRO_MODE] Chain of Thought processing enabled for complex queries")
-            else:
-                self.logger.debug("⚡ [PRO_MODE] Chain of Thought processing disabled")
-
-            # システムプロンプトをprocessed_queryに追加
-            full_query = f"{system_prompt}\n\n{processed_query}" if system_prompt else processed_query
+            # システムプロンプトを追加
+            full_query = f"{system_prompt}\n\n{query}" if system_prompt else query
 
             # MOSでのチャット処理（応答生成）
             response = self.mos.chat(query=full_query, user_id=effective_user_id)
 
-            # 応答をすぐに返却する前に、記憶保存をバックグラウンドタスクとして開始
-            # 注意: 元のqueryを保存（書き換え前のユーザーの実際の発言）
-            messages = [{"role": "user", "content": query}, {"role": "assistant", "content": response}]
-
             # 記憶保存を非同期で実行（応答返却をブロックしない）
+            messages = [{"role": "user", "content": query}, {"role": "assistant", "content": response}]
             asyncio.create_task(self._save_conversation_memory_async(messages, effective_user_id))
 
             self.logger.debug(f"Chat response: {len(response)} characters (memory saving in background)")
@@ -470,6 +437,8 @@ class CocoroCore2App:
                         },
                     },
                     "reorganize": False,  # 初期は無効
+                    # Internet Retrieval設定
+                    "internet_retriever": self._get_internet_retriever_config(user_id) if self.config.enable_internet_retrieval else None,
                 },
             },
             "act_mem": {},
@@ -480,8 +449,55 @@ class CocoroCore2App:
         self.logger.debug(f"  - Embedder model: {embedder_config['model_name_or_path']}")
         self.logger.debug(f"  - Vector dimension: {vector_dimension}")
         self.logger.debug(f"  - Chat model: {chat_model_config['model_name_or_path']}")
+        
+        # Internet Retrieval設定詳細ログ
+        internet_config = cube_config["text_mem"]["config"].get("internet_retriever")
+        self.logger.info(f"🌐 [MemCube] Internet Retrieval configured: {internet_config is not None}")
+        if internet_config:
+            self.logger.info(f"🌐 [MemCube] Internet backend: {internet_config.get('backend')}")
+            self.logger.info(f"🌐 [MemCube] API key present: {bool(internet_config.get('config', {}).get('api_key'))}")
+        else:
+            self.logger.warning(f"🌐 [MemCube] Internet Retrieval disabled - enable setting: {self.config.enable_internet_retrieval}")
 
         return cube_config
+
+    def _get_internet_retriever_config(self, user_id: str) -> dict:
+        """Internet Retriever設定を生成
+
+        Args:
+            user_id: ユーザーID
+
+        Returns:
+            dict: Internet Retriever設定辞書
+        """
+        # Google API設定をCocoroAIConfigから取得
+        google_api_key = self.config.googleApiKey
+        google_search_engine_id = self.config.googleSearchEngineId
+        max_results = self.config.internetMaxResults
+
+        # 必須項目の確認
+        if not google_api_key or not google_search_engine_id:
+            self.logger.warning("Internet Retrieval requires Google API key and Search Engine ID")
+            self.logger.warning(f"  - Google API Key: {'SET' if google_api_key else 'NOT SET'}")
+            self.logger.warning(f"  - Search Engine ID: {'SET' if google_search_engine_id else 'NOT SET'}")
+            return None
+
+        # Internet Retriever設定を構築（MemOS GoogleCustomSearchConfig仕様）
+        internet_config = {
+            "backend": "google",
+            "config": {
+                "api_key": google_api_key,
+                "search_engine_id": google_search_engine_id,  # GoogleCustomSearchConfigの正式パラメータ
+                "max_results": max_results,
+                "num_per_request": min(10, max_results),  # Google APIの制限（最大10）
+            },
+        }
+
+        self.logger.debug(f"Generated Internet Retriever config for user {user_id}")
+        self.logger.debug("  - Backend: google")
+        self.logger.debug(f"  - Max results: {max_results}")
+
+        return internet_config
 
     def _ensure_user_memcube(self, user_id: str) -> None:
         """ユーザーのMemCubeの存在を確保

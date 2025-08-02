@@ -61,9 +61,14 @@ class CocoroAIConfig(BaseModel):
     # MemOS高度機能設定
     enable_query_rewriting: bool = Field(default=True, description="文脈依存クエリの書き換え機能を有効にする")
     max_turns_window: int = Field(default=15, description="会話履歴の最大保持数")
-    enable_pro_mode: bool = Field(default=False, description="PRO_MODE（Chain of Thought）を有効にする")
-    enable_internet_retrieval: bool = Field(default=False, description="インターネット検索機能を有効にする")
+    enable_pro_mode: bool = Field(default=True, description="PRO_MODE（Chain of Thought）を有効にする")
+    enable_internet_retrieval: bool = Field(default=True, description="インターネット検索機能を有効にする")
     enable_memory_scheduler: bool = Field(default=False, description="メモリスケジューラーを有効にする")
+
+    # Internet Retrieval設定
+    googleApiKey: str = Field(default="", description="Google Custom Search API キー")
+    googleSearchEngineId: str = Field(default="", description="Google Custom Search Engine ID (cse_id)")
+    internetMaxResults: int = Field(default=5, description="インターネット検索の最大結果数")
 
     @property
     def current_character(self) -> Optional[CharacterData]:
@@ -224,8 +229,7 @@ def generate_memos_config_from_setting(cocoro_config: "CocoroAIConfig") -> Dict[
         "enable_mem_scheduler": cocoro_config.enable_memory_scheduler,
         "top_k": 5,
         # PRO_MODE (Chain of Thought) 設定
-        "enable_cot": cocoro_config.enable_pro_mode,
-        "cot_top_k": 3,  # CoT用のtop_k設定
+        "PRO_MODE": cocoro_config.enable_pro_mode,
     }
 
     return memos_config
