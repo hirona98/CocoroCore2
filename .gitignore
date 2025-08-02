@@ -175,3 +175,7 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 .claude/settings.local.json
+
+# 除外対象外
+!neo4j/lib/
+!jre/lib/
