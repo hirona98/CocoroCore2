@@ -86,9 +86,22 @@ class CocoroCore2App:
         else:
             self.logger.info("🌐 Internet Retrieval: ❌ DISABLED")
 
-        # Memory Scheduler
-        scheduler_status = "✅ ENABLED" if self.config.enable_memory_scheduler else "❌ DISABLED"
-        self.logger.info(f"⚙️ Memory Scheduler: {scheduler_status}")
+        # Memory Scheduler（常に有効）
+        try:
+            scheduler = getattr(self.mos, 'mem_scheduler', None)
+            if scheduler:
+                self.logger.info(f"⚙️ Memory Scheduler: ✅ ENABLED (Active)")
+                self.logger.info(f"⚙️   ├─ Top-K: {self.config.scheduler_top_k}")
+                self.logger.info(f"⚙️   ├─ Top-N: {self.config.scheduler_top_n}")
+                self.logger.info(f"⚙️   ├─ Context Window: {self.config.scheduler_context_window_size}")
+                self.logger.info(f"⚙️   ├─ Workers: {self.config.scheduler_thread_pool_max_workers}")
+                self.logger.info(f"⚙️   ├─ Consume Interval: {self.config.scheduler_consume_interval_seconds}s")
+                self.logger.info(f"⚙️   ├─ Parallel Dispatch: {'✅' if self.config.scheduler_enable_parallel_dispatch else '❌'}")
+                self.logger.info(f"⚙️   └─ Activation Memory Update: {'✅' if self.config.scheduler_enable_act_memory_update else '❌'}")
+            else:
+                self.logger.info("⚙️ Memory Scheduler: ⚠️ Not initialized")
+        except Exception as e:
+            self.logger.warning(f"⚙️ Memory Scheduler: ⚠️ Status check failed: {e}")
 
         self.logger.info(f"💭 会話履歴保持: {self.config.max_turns_window}ターン")
         self.logger.info("============================================================")
@@ -175,6 +188,22 @@ class CocoroCore2App:
         """アプリケーション終了処理"""
         try:
             self.logger.info("Shutting down CocoroCore2App...")
+
+            # Memory Scheduler停止処理（MemCube永続化前に実行）
+            try:
+                self.logger.info("Stopping Memory Scheduler...")
+                scheduler = getattr(self.mos, 'mem_scheduler', None)
+                if scheduler:
+                    # Memory Schedulerを適切に停止
+                    if hasattr(scheduler, 'stop'):
+                        scheduler.stop()
+                        self.logger.info("Memory Scheduler stopped successfully")
+                    else:
+                        self.logger.warning("Memory Scheduler has no stop method")
+                else:
+                    self.logger.info("Memory Scheduler was not active")
+            except Exception as e:
+                self.logger.error(f"Failed to stop Memory Scheduler: {e}")
 
             # MemCubeの永続化（Neo4j停止前に実行）
             try:

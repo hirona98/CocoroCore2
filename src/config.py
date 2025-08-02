@@ -63,7 +63,17 @@ class CocoroAIConfig(BaseModel):
     max_turns_window: int = Field(default=15, description="会話履歴の最大保持数")
     enable_pro_mode: bool = Field(default=True, description="PRO_MODE（Chain of Thought）を有効にする")
     enable_internet_retrieval: bool = Field(default=True, description="インターネット検索機能を有効にする")
-    enable_memory_scheduler: bool = Field(default=False, description="メモリスケジューラーを有効にする")
+    enable_memory_scheduler: bool = Field(default=True, description="メモリスケジューラーを有効にする（常に有効）")
+
+    # Memory Scheduler詳細設定
+    scheduler_top_k: int = Field(default=10, description="スケジューラーのメモリ取得数")
+    scheduler_top_n: int = Field(default=5, description="スケジューラーの上位N件")
+    scheduler_act_mem_update_interval: int = Field(default=300, description="アクティベーションメモリ更新間隔（秒）")
+    scheduler_context_window_size: int = Field(default=5, description="スケジューラーのコンテキストウィンドウサイズ")
+    scheduler_thread_pool_max_workers: int = Field(default=10, description="スケジューラーの最大ワーカー数")
+    scheduler_consume_interval_seconds: int = Field(default=3, description="メッセージ消費間隔（秒）")
+    scheduler_enable_parallel_dispatch: bool = Field(default=True, description="並列メッセージ処理を有効にする")
+    scheduler_enable_act_memory_update: bool = Field(default=False, description="アクティベーションメモリ更新を有効にする（API経由LLMでは通常無効）")
 
     # Internet Retrieval設定
     googleApiKey: str = Field(default="", description="Google Custom Search API キー")
@@ -230,6 +240,21 @@ def generate_memos_config_from_setting(cocoro_config: "CocoroAIConfig") -> Dict[
         "top_k": 5,
         # PRO_MODE (Chain of Thought) 設定
         "PRO_MODE": cocoro_config.enable_pro_mode,
+    }
+
+    # Memory Scheduler設定を追加（常に有効）
+    memos_config["mem_scheduler"] = {
+        "backend": "general_scheduler",
+        "config": {
+            "top_k": cocoro_config.scheduler_top_k,
+            "top_n": cocoro_config.scheduler_top_n,
+            "act_mem_update_interval": cocoro_config.scheduler_act_mem_update_interval,
+            "context_window_size": cocoro_config.scheduler_context_window_size,
+            "thread_pool_max_workers": cocoro_config.scheduler_thread_pool_max_workers,
+            "consume_interval_seconds": cocoro_config.scheduler_consume_interval_seconds,
+            "enable_parallel_dispatch": cocoro_config.scheduler_enable_parallel_dispatch,
+            "enable_act_memory_update": cocoro_config.scheduler_enable_act_memory_update,
+        },
     }
 
     return memos_config
