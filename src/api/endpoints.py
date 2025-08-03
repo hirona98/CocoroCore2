@@ -88,45 +88,15 @@ async def unified_chat(
     core_app: CocoroCore2App = Depends(get_app_instance),
     session_manager: SessionManager = Depends(get_session_manager)
 ):
-    """統一チャットエンドポイント - CocoroDock→CocoroCore2の新設計API"""
-    try:
-        logger.debug(f"Unified chat request: user_id={request.user_id}, session_id={request.session_id}")
-        
-        # ユーザーの存在を確保
-        core_app.ensure_user(request.user_id)
-        
-        # セッション管理（正しい用途）
-        session = session_manager.ensure_session(request.session_id, request.user_id)
-        
-        # コンテキストID生成（必要に応じて）
-        import uuid
-        context_id = request.context_id or str(uuid.uuid4())
-        
-        # MemOSに直接アクセス（非同期）
-        response = await core_app.memos_chat(
-            query=request.message,
-            user_id=request.user_id,
-            system_prompt=request.system_prompt
-        )
-        
-        logger.debug(f"MemOS response received: {len(response)} characters")
-        
-        return UnifiedChatResponse(
-            status="success",
-            message="チャット処理が完了しました",
-            response=response,
-            context_id=context_id,
-            session_id=request.session_id,
-            response_length=len(response)
-        )
-        
-    except Exception as e:
-        logger.error(f"Unified chat error: {e}")
-        return UnifiedChatResponse(
-            status="error",
-            message=f"チャット処理エラー: {str(e)}",
-            session_id=request.session_id
-        )
+    """統一チャットエンドポイント - CocoroDock→CocoroCore2の新設計API（画像対応拡張）"""
+    from .chat_handlers import ChatHandlers
+    
+    # セッション管理（正しい用途）
+    session = session_manager.ensure_session(request.session_id, request.user_id)
+    
+    # 画像対応の統一チャットハンドラーを使用
+    chat_handlers = ChatHandlers(core_app)
+    return await chat_handlers.handle_unified_chat(request)
 
 
 # ========================================

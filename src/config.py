@@ -80,6 +80,20 @@ class CocoroAIConfig(BaseModel):
     googleSearchEngineId: str = Field(default="", description="Google Custom Search Engine ID (cse_id)")
     internetMaxResults: int = Field(default=5, description="インターネット検索の最大結果数")
 
+    # マルチモーダル画像処理設定
+    multimodal_enabled: bool = Field(default=True, description="マルチモーダル画像処理機能を有効にする")
+    vision_model: str = Field(default="gpt-4o", description="画像分析用のVisionモデル")
+    backup_vision_model: str = Field(default="gpt-4o-mini", description="バックアップ用のVisionモデル")
+    max_image_size: int = Field(default=5242880, description="最大画像サイズ (5MB)")
+    analysis_timeout_seconds: int = Field(default=30, description="画像分析のタイムアウト時間（秒）")
+    
+    # 画像処理エラーハンドリング設定
+    image_analysis_max_retries: int = Field(default=2, description="画像分析の最大リトライ回数")
+    image_analysis_retry_delay: float = Field(default=1.0, description="画像分析リトライ間隔（秒）")
+    
+    # パフォーマンス最適化設定
+    enable_parallel_processing: bool = Field(default=True, description="並列処理を有効にする")
+
     @property
     def current_character(self) -> Optional[CharacterData]:
         """現在選択されているキャラクターを取得"""

@@ -211,4 +211,5 @@ class UnifiedChatResponse(BaseModel):
     context_id: Optional[str] = Field(None, description="新しいコンテキストID")
     session_id: Optional[str] = Field(None, description="セッションID")
     response_length: Optional[int] = Field(None, description="レスポンス文字数")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="追加メタデータ（画像分析結果等）")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="タイムスタンプ")
