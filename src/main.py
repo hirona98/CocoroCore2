@@ -12,14 +12,40 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# PyInstaller環境の検出
+def is_pyinstaller_bundle():
+    """PyInstallerでビルドされた環境かどうかを判定"""
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
 # モジュールパスを追加（直接実行対応）
-sys.path.insert(0, str(Path(__file__).parent.parent))
+if not is_pyinstaller_bundle():
+    # 開発環境での実行
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+else:
+    # PyInstallerビルド環境での実行
+    # srcディレクトリがバンドルされているので、そのパスを追加
+    bundle_dir = getattr(sys, '_MEIPASS', str(Path(__file__).parent))
+    src_path = str(Path(bundle_dir) / 'src')
+    if Path(src_path).exists():
+        sys.path.insert(0, src_path)
+    sys.path.insert(0, bundle_dir)
 
 import uvicorn
 
-from src.app import app
-from src.config import CocoroAIConfig, parse_args, ConfigurationError
-from src.log_handler import CocoroDockLogHandler, set_dock_log_handler
+try:
+    from src.app import app
+    from src.config import CocoroAIConfig, parse_args, ConfigurationError
+    from src.log_handler import CocoroDockLogHandler, set_dock_log_handler
+except ImportError as e:
+    # PyInstaller環境でのフォールバック
+    try:
+        from app import app
+        from config import CocoroAIConfig, parse_args, ConfigurationError
+        from log_handler import CocoroDockLogHandler, set_dock_log_handler
+    except ImportError:
+        print(f"モジュールのインポートに失敗しました: {e}")
+        print("PyInstallerビルド設定を確認してください")
+        sys.exit(1)
 
 
 # ログ設定
@@ -113,7 +139,10 @@ def setup_api_keys_from_config(config: CocoroAIConfig):
     """設定ファイルからAPIキーを環境変数に設定"""
     try:
         # Setting.jsonから OpenAI APIキーを取得
-        from config import generate_memos_config_from_setting
+        try:
+            from config import generate_memos_config_from_setting
+        except ImportError:
+            from src.config import generate_memos_config_from_setting
         memos_config = generate_memos_config_from_setting(config)
         
         # chat_model の APIキー
@@ -234,7 +263,10 @@ async def main():
                 print(f"設定ファイル読み込み: {args.config_file}")
             else:
                 config = CocoroAIConfig.load()
-                from src.config import find_config_file
+                try:
+                    from src.config import find_config_file
+                except ImportError:
+                    from config import find_config_file
                 config_path = find_config_file()
                 print(f"設定ファイル読み込み: {config_path}")
         except ConfigurationError as e:

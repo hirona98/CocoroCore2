@@ -11,8 +11,15 @@ from typing import Any, Dict, Optional
 
 from memos.mem_os.main import MOS
 
-from config import CocoroAIConfig, get_mos_config, generate_memos_config_from_setting, load_neo4j_config
-from .core.neo4j_manager import Neo4jManager
+try:
+    from config import CocoroAIConfig, get_mos_config, generate_memos_config_from_setting, load_neo4j_config
+except ImportError:
+    from src.config import CocoroAIConfig, get_mos_config, generate_memos_config_from_setting, load_neo4j_config
+
+try:
+    from .core.neo4j_manager import Neo4jManager
+except ImportError:
+    from core.neo4j_manager import Neo4jManager
 
 
 class CocoroCore2App:
@@ -70,40 +77,40 @@ class CocoroCore2App:
     def _log_advanced_features_status(self):
         """CocoroCore2で有効化されたMemOS機能の状態をログ出力"""
         self.logger.info("============================================================")
-        self.logger.info("📋 CocoroCore2 MemOS Integration Status")
+        self.logger.info("[INFO] CocoroCore2 MemOS Integration Status")
         self.logger.info("============================================================")
 
         # Phase 1: 文脈依存クエリ対応
-        query_status = "✅ ENABLED" if self.config.enable_query_rewriting else "❌ DISABLED"
-        self.logger.info(f"🔄 Query Rewriting: {query_status}")
+        query_status = "[OK] ENABLED" if self.config.enable_query_rewriting else "[OFF] DISABLED"
+        self.logger.info(f"[QR] Query Rewriting: {query_status}")
 
         # Phase 2: Internet Retrieval
         if self.config.enable_internet_retrieval:
             if self.config.googleApiKey and self.config.googleSearchEngineId:
-                self.logger.info(f"🌐 Internet Retrieval: ✅ ENABLED ({self.config.internetMaxResults}件)")
+                self.logger.info(f"[NET] Internet Retrieval: [OK] ENABLED ({self.config.internetMaxResults}件)")
             else:
-                self.logger.info("🌐 Internet Retrieval: ⚠️ 設定不完全")
+                self.logger.info("[NET] Internet Retrieval: [WARN] 設定不完全")
         else:
-            self.logger.info("🌐 Internet Retrieval: ❌ DISABLED")
+            self.logger.info("[NET] Internet Retrieval: [OFF] DISABLED")
 
         # Memory Scheduler（常に有効）
         try:
             scheduler = getattr(self.mos, 'mem_scheduler', None)
             if scheduler:
-                self.logger.info(f"⚙️ Memory Scheduler: ✅ ENABLED (Active)")
-                self.logger.info(f"⚙️   ├─ Top-K: {self.config.scheduler_top_k}")
-                self.logger.info(f"⚙️   ├─ Top-N: {self.config.scheduler_top_n}")
-                self.logger.info(f"⚙️   ├─ Context Window: {self.config.scheduler_context_window_size}")
-                self.logger.info(f"⚙️   ├─ Workers: {self.config.scheduler_thread_pool_max_workers}")
-                self.logger.info(f"⚙️   ├─ Consume Interval: {self.config.scheduler_consume_interval_seconds}s")
-                self.logger.info(f"⚙️   ├─ Parallel Dispatch: {'✅' if self.config.scheduler_enable_parallel_dispatch else '❌'}")
-                self.logger.info(f"⚙️   └─ Activation Memory Update: {'✅' if self.config.scheduler_enable_act_memory_update else '❌'}")
+                self.logger.info(f"[SYS] Memory Scheduler: [OK] ENABLED (Active)")
+                self.logger.info(f"[SYS]   |- Top-K: {self.config.scheduler_top_k}")
+                self.logger.info(f"[SYS]   |- Top-N: {self.config.scheduler_top_n}")
+                self.logger.info(f"[SYS]   |- Context Window: {self.config.scheduler_context_window_size}")
+                self.logger.info(f"[SYS]   |- Workers: {self.config.scheduler_thread_pool_max_workers}")
+                self.logger.info(f"[SYS]   |- Consume Interval: {self.config.scheduler_consume_interval_seconds}s")
+                self.logger.info(f"[SYS]   |- Parallel Dispatch: {'[OK]' if self.config.scheduler_enable_parallel_dispatch else '[OFF]'}")
+                self.logger.info(f"[SYS]   +- Activation Memory Update: {'[OK]' if self.config.scheduler_enable_act_memory_update else '[OFF]'}")
             else:
-                self.logger.info("⚙️ Memory Scheduler: ⚠️ Not initialized")
+                self.logger.info("[SYS] Memory Scheduler: [WARN] Not initialized")
         except Exception as e:
-            self.logger.warning(f"⚙️ Memory Scheduler: ⚠️ Status check failed: {e}")
+            self.logger.warning(f"[SYS] Memory Scheduler: [WARN] Status check failed: {e}")
 
-        self.logger.info(f"💭 会話履歴保持: {self.config.max_turns_window}ターン")
+        self.logger.info(f"[CHAT] 会話履歴保持: {self.config.max_turns_window}ターン")
         self.logger.info("============================================================")
 
     def _setup_memos_environment(self):
@@ -280,10 +287,10 @@ class CocoroCore2App:
         try:
             # asyncio.to_thread() を使用してブロッキング処理を別スレッドで実行
             await asyncio.to_thread(self.mos.add, messages=messages, user_id=user_id)
-            self.logger.debug(f"✅ Memory saved asynchronously for user {user_id}")
+            self.logger.debug(f"[OK] Memory saved asynchronously for user {user_id}")
         except Exception as e:
             # バックグラウンドタスクなので例外を上に伝播せず、ログ出力のみ
-            self.logger.warning(f"❌ Failed to save conversation memory asynchronously: {e}")
+            self.logger.warning(f"[ERR] Failed to save conversation memory asynchronously: {e}")
 
     def add_memory(self, content: str, user_id: Optional[str] = None, session_id: Optional[str] = None, **context) -> None:
         """記憶追加（スケジューラー連携付き）
@@ -481,12 +488,12 @@ class CocoroCore2App:
         
         # Internet Retrieval設定詳細ログ
         internet_config = cube_config["text_mem"]["config"].get("internet_retriever")
-        self.logger.info(f"🌐 [MemCube] Internet Retrieval configured: {internet_config is not None}")
+        self.logger.info(f"[NET] [MemCube] Internet Retrieval configured: {internet_config is not None}")
         if internet_config:
-            self.logger.info(f"🌐 [MemCube] Internet backend: {internet_config.get('backend')}")
-            self.logger.info(f"🌐 [MemCube] API key present: {bool(internet_config.get('config', {}).get('api_key'))}")
+            self.logger.info(f"[NET] [MemCube] Internet backend: {internet_config.get('backend')}")
+            self.logger.info(f"[NET] [MemCube] API key present: {bool(internet_config.get('config', {}).get('api_key'))}")
         else:
-            self.logger.warning(f"🌐 [MemCube] Internet Retrieval disabled - enable setting: {self.config.enable_internet_retrieval}")
+            self.logger.warning(f"[NET] [MemCube] Internet Retrieval disabled - enable setting: {self.config.enable_internet_retrieval}")
 
         return cube_config
 
