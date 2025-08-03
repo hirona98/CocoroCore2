@@ -136,10 +136,161 @@ class CocoroCore2App:
             self.logger.error(f"Failed to setup MemOS environment: {e}")
             raise
 
+    def _find_character_by_user_id(self, user_id: str) -> Optional[object]:
+        """user_idに対応するキャラクター設定を検索
+        
+        Args:
+            user_id: 検索対象のユーザーID
+            
+        Returns:
+            Optional[object]: 対応するキャラクター設定、見つからない場合はNone
+        """
+        try:
+            for character in self.config.characterList:
+                if character.userId == user_id:
+                    return character
+            return None
+        except Exception as e:
+            self.logger.error(f"Failed to find character for user_id {user_id}: {e}")
+            return None
+
+    def _sync_memcube_api_keys(self) -> None:
+        """既存MemCubeのAPIキーを各キャラクター設定から個別同期"""
+        import os
+        import json
+        from pathlib import Path
+        
+        try:
+            # .memos/user_cubesディレクトリ内の全てのMemCubeをチェック
+            user_cubes_dir = Path(".memos/user_cubes")
+            if not user_cubes_dir.exists():
+                self.logger.debug("No existing MemCubes found for API key sync")
+                return
+            
+            self.logger.info("Syncing existing MemCube API keys with character-specific settings...")
+            synced_count = 0
+            skipped_count = 0
+            
+            # 各MemCubeディレクトリを処理
+            for cube_dir in user_cubes_dir.iterdir():
+                if not cube_dir.is_dir():
+                    continue
+                
+                config_file = cube_dir / "config.json"
+                if not config_file.exists():
+                    self.logger.warning(f"No config.json found in MemCube: {cube_dir.name}")
+                    continue
+                
+                try:
+                    # config.jsonを読み込み
+                    with open(config_file, 'r', encoding='utf-8') as f:
+                        config_data = json.load(f)
+                    
+                    # MemCubeのuser_idを取得
+                    cube_user_id = config_data.get("user_id")
+                    if not cube_user_id:
+                        self.logger.warning(f"No user_id found in MemCube: {cube_dir.name}")
+                        continue
+                    
+                    # 対応するキャラクター設定を検索
+                    character = self._find_character_by_user_id(cube_user_id)
+                    if not character:
+                        self.logger.warning(f"No character found for user_id '{cube_user_id}' in MemCube: {cube_dir.name}")
+                        skipped_count += 1
+                        continue
+                    
+                    # キャラクターのMemory機能が無効な場合はスキップ
+                    if not getattr(character, 'isEnableMemory', False):
+                        self.logger.debug(f"Memory disabled for character '{character.modelName}' (user_id: {cube_user_id}), skipping API key sync")
+                        skipped_count += 1
+                        continue
+                    
+                    # キャラクター固有のAPIキーを取得
+                    api_key = getattr(character, 'apiKey', '') or ""
+                    embedded_api_key = getattr(character, 'embeddedApiKey', '') or api_key
+                    
+                    # APIキーの有効性チェック
+                    if not api_key.startswith("sk-"):
+                        self.logger.debug(f"No valid API key for character '{character.modelName}' (user_id: {cube_user_id}), skipping sync")
+                        skipped_count += 1
+                        continue
+                    
+                    # APIキーを更新する必要があるかチェック
+                    needs_update = False
+                    
+                    # extractor_llm のAPIキー更新
+                    current_extractor_key = (config_data.get("text_mem", {}).get("config", {})
+                                           .get("extractor_llm", {}).get("config", {}).get("api_key"))
+                    if current_extractor_key != api_key:
+                        if "text_mem" not in config_data:
+                            config_data["text_mem"] = {}
+                        if "config" not in config_data["text_mem"]:
+                            config_data["text_mem"]["config"] = {}
+                        if "extractor_llm" not in config_data["text_mem"]["config"]:
+                            config_data["text_mem"]["config"]["extractor_llm"] = {}
+                        if "config" not in config_data["text_mem"]["config"]["extractor_llm"]:
+                            config_data["text_mem"]["config"]["extractor_llm"]["config"] = {}
+                        
+                        config_data["text_mem"]["config"]["extractor_llm"]["config"]["api_key"] = api_key
+                        needs_update = True
+                    
+                    # dispatcher_llm のAPIキー更新
+                    current_dispatcher_key = (config_data.get("text_mem", {}).get("config", {})
+                                            .get("dispatcher_llm", {}).get("config", {}).get("api_key"))
+                    if current_dispatcher_key != api_key:
+                        if "text_mem" not in config_data:
+                            config_data["text_mem"] = {}
+                        if "config" not in config_data["text_mem"]:
+                            config_data["text_mem"]["config"] = {}
+                        if "dispatcher_llm" not in config_data["text_mem"]["config"]:
+                            config_data["text_mem"]["config"]["dispatcher_llm"] = {}
+                        if "config" not in config_data["text_mem"]["config"]["dispatcher_llm"]:
+                            config_data["text_mem"]["config"]["dispatcher_llm"]["config"] = {}
+                        
+                        config_data["text_mem"]["config"]["dispatcher_llm"]["config"]["api_key"] = api_key
+                        needs_update = True
+                    
+                    # embedder のAPIキー更新
+                    current_embedder_key = (config_data.get("text_mem", {}).get("config", {})
+                                          .get("embedder", {}).get("config", {}).get("api_key"))
+                    if current_embedder_key != embedded_api_key:
+                        if "text_mem" not in config_data:
+                            config_data["text_mem"] = {}
+                        if "config" not in config_data["text_mem"]:
+                            config_data["text_mem"]["config"] = {}
+                        if "embedder" not in config_data["text_mem"]["config"]:
+                            config_data["text_mem"]["config"]["embedder"] = {}
+                        if "config" not in config_data["text_mem"]["config"]["embedder"]:
+                            config_data["text_mem"]["config"]["embedder"]["config"] = {}
+                        
+                        config_data["text_mem"]["config"]["embedder"]["config"]["api_key"] = embedded_api_key
+                        needs_update = True
+                    
+                    # 更新が必要な場合のみファイルを書き換え
+                    if needs_update:
+                        with open(config_file, 'w', encoding='utf-8') as f:
+                            json.dump(config_data, f, indent=2, ensure_ascii=False)
+                        self.logger.info(f"Updated API keys in MemCube '{cube_dir.name}' for character '{character.modelName}' (user_id: {cube_user_id})")
+                        synced_count += 1
+                    else:
+                        self.logger.debug(f"API keys already up-to-date in MemCube '{cube_dir.name}' for character '{character.modelName}' (user_id: {cube_user_id})")
+                
+                except Exception as e:
+                    self.logger.error(f"Failed to sync API keys in MemCube {cube_dir.name}: {e}")
+                    skipped_count += 1
+            
+            self.logger.info(f"MemCube API key sync completed: {synced_count} updated, {skipped_count} skipped")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to sync MemCube API keys: {e}")
+
     async def startup(self):
         """アプリケーション起動処理"""
         try:
             self.logger.info("Starting CocoroCore2App...")
+
+            # 既存MemCubeのAPIキーを設定ファイルから同期（Neo4j起動前に実行）
+            self._sync_memcube_api_keys()
 
             # Neo4j組み込みサービス起動（MOSより前に起動）
             if self.neo4j_manager:
