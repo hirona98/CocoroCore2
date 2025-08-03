@@ -10,7 +10,7 @@ httpx>=0.28.1
 websockets>=13.1
 
 # LLM Integration
-litellm>=1.55.0
+openai>=1.54.0
 
 # Image Processing
 Pillow>=11.0.0

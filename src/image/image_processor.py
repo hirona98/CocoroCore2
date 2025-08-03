@@ -54,7 +54,7 @@ class ImageProcessor:
             raise Exception("画像分析に失敗しました")
         
         try:
-            import litellm
+            from openai import AsyncOpenAI
             
             # LLMクライアントの設定を取得
             api_key, model = self._get_llm_config()
@@ -62,6 +62,9 @@ class ImageProcessor:
             if not api_key:
                 self.logger.warning("APIキーが設定されていないため、画像説明の生成をスキップします")
                 raise Exception("画像分析に失敗しました")
+            
+            # OpenAIクライアント初期化
+            client = AsyncOpenAI(api_key=api_key)
             
             # プロンプト生成
             system_prompt, user_text = self._generate_prompts(len(image_urls))
@@ -73,13 +76,12 @@ class ImageProcessor:
             user_content.append({"type": "text", "text": user_text})
             
             # Vision APIで画像の説明を生成
-            response = await litellm.acompletion(
+            response = await client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
-                api_key=api_key,
                 temperature=0.3,
                 timeout=self.analysis_timeout_seconds,
             )
