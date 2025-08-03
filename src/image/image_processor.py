@@ -10,7 +10,7 @@ import os
 from typing import Dict, List, Optional
 
 from .models import ImageAnalysisResult
-from .error_handlers import VisionAPIError, ImageSizeError
+# カスタム例外クラスを削除し、標準例外を使用
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +47,11 @@ class ImageProcessor:
         """
         if not self.multimodal_enabled:
             self.logger.warning("マルチモーダル機能が無効になっています")
-            raise VisionAPIError("画像分析に失敗しました")
+            raise Exception("画像分析に失敗しました")
         
         if not image_urls:
             self.logger.warning("画像URLが提供されていません")
-            raise VisionAPIError("画像分析に失敗しました")
+            raise Exception("画像分析に失敗しました")
         
         try:
             import litellm
@@ -61,7 +61,7 @@ class ImageProcessor:
             
             if not api_key:
                 self.logger.warning("APIキーが設定されていないため、画像説明の生成をスキップします")
-                raise VisionAPIError("画像分析に失敗しました")
+                raise Exception("画像分析に失敗しました")
             
             # プロンプト生成
             system_prompt, user_text = self._generate_prompts(len(image_urls))
@@ -94,10 +94,10 @@ class ImageProcessor:
             self.logger.error(f"画像分析に失敗しました: {e}")
             # バックアップモデルで再試行
             try:
-                raise VisionAPIError("プライマリモデルで画像分析に失敗しました")
+                raise Exception("プライマリモデルで画像分析に失敗しました")
             except Exception as backup_error:
                 self.logger.error(f"バックアップモデルでの分析も失敗: {backup_error}")
-                raise VisionAPIError("画像分析に失敗しました")
+                raise Exception("画像分析に失敗しました")
     
 
     
@@ -120,7 +120,7 @@ class ImageProcessor:
         )
         
         if response is None:
-            raise VisionAPIError("画像分析に失敗しました")
+            raise Exception("画像分析に失敗しました")
         
         lines = response.split('\\n')
         for line in lines:
@@ -140,7 +140,7 @@ class ImageProcessor:
         
         # 説明が空の場合はフォールバック
         if not result.description:
-            raise VisionAPIError("画像分析に失敗しました")
+            raise Exception("画像分析に失敗しました")
         
         return result
     

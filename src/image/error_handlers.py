@@ -9,20 +9,11 @@ import asyncio
 import logging
 from typing import List, Optional
 
-from .image_processor import ImageProcessor
+# カスタム例外クラスを削除し、標準例外を使用
 from .models import ImageAnalysisResult
+from .image_processor import ImageProcessor
 
 logger = logging.getLogger(__name__)
-
-
-class VisionAPIError(Exception):
-    """Vision API関連のエラー"""
-    pass
-
-
-class ImageSizeError(Exception):
-    """画像サイズ関連のエラー"""
-    pass
 
 
 class RobustImageAnalyzer:
@@ -49,11 +40,11 @@ class RobustImageAnalyzer:
             ImageAnalysisResult: 分析結果
             
         Raises:
-            VisionAPIError: 画像分析失敗時
-            ImageSizeError: 画像サイズエラー時
+            Exception: 画像分析失敗時
+            ValueError: 画像サイズエラー時
         """
         if not image_urls:
-            raise VisionAPIError("画像URLが提供されていません")
+            raise Exception("画像URLが提供されていません")
         
         # 画像サイズ検証
         await self._validate_image_sizes(image_urls)
@@ -72,7 +63,7 @@ class RobustImageAnalyzer:
             ImageAnalysisResult: 分析結果
             
         Raises:
-            VisionAPIError: Vision API関連のエラー
+            Exception: Vision API関連のエラー
         """
         last_error = None
         
@@ -97,7 +88,7 @@ class RobustImageAnalyzer:
                     break
         
         # すべての試行が失敗した場合
-        raise VisionAPIError(f"画像分析が{self.max_retries + 1}回の試行で失敗: {last_error}")
+        raise Exception(f"画像分析が{self.max_retries + 1}回の試行で失敗: {last_error}")
     
     async def _validate_image_sizes(self, image_urls: List[str]):
         """
@@ -107,7 +98,7 @@ class RobustImageAnalyzer:
             image_urls: 画像URLのリスト
             
         Raises:
-            ImageSizeError: 画像サイズが制限を超えている場合
+            ValueError: 画像サイズが制限を超えている場合
         """
         # data:スキームの簡易サイズチェック
         for i, url in enumerate(image_urls):
@@ -120,7 +111,7 @@ class RobustImageAnalyzer:
                     estimated_size = len(base64_data) * 3 // 4
                     
                     if estimated_size > self.max_image_size:
-                        raise ImageSizeError(
+                        raise ValueError(
                             f"画像{i+1}のサイズ({estimated_size}bytes)が制限({self.max_image_size}bytes)を超えています"
                         )
 
@@ -148,9 +139,9 @@ class ChatHandlerErrorManager:
         self.logger.error(f"チャットエラー [{error_type}] {request_info}: {error_message}")
         
         # エラータイプに応じたユーザーフレンドリーなメッセージ
-        if isinstance(error, VisionAPIError):
+        if isinstance(error, Exception):
             user_message = "画像の分析で問題が発生しました。しばらく待ってから再度お試しください。"
-        elif isinstance(error, ImageSizeError):
+        elif isinstance(error, ValueError):
             user_message = "画像のサイズが大きすぎます。もう少し小さい画像でお試しください。"
         elif isinstance(error, asyncio.TimeoutError):
             user_message = "処理に時間がかかりすぎています。もう一度お試しください。"

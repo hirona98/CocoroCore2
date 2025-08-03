@@ -62,11 +62,12 @@ class AIInitiativeMessageGenerator:
                     f"時間帯: {analysis_result.time}"
                 ])
                 
+                context_str = '\n'.join(context_info)
                 enhanced_prompt = f"""{system_prompt}
 
 以下の状況について、あなたのキャラクター性を活かして自然に反応してください：
 
-{'\n'.join(context_info)}
+{context_str}
 
 1〜2文の短いメッセージで、キャラクターらしく話しかけてください。"""
                 
