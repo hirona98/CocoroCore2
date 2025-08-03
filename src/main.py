@@ -19,6 +19,7 @@ import uvicorn
 
 from src.app import app
 from src.config import CocoroAIConfig, parse_args, ConfigurationError
+from src.log_handler import CocoroDockLogHandler, set_dock_log_handler
 
 
 # ログ設定
@@ -59,6 +60,19 @@ def setup_logging(config: CocoroAIConfig):
         root_logger.addHandler(file_handler)
     except Exception as e:
         print(f"ファイルロガーの設定に失敗しました: {e}")
+    
+    # CocoroDock用ログハンドラーの初期化
+    try:
+        dock_port = config.cocoroDockPort
+        dock_url = f"http://127.0.0.1:{dock_port}"
+        dock_log_handler = CocoroDockLogHandler(dock_url=dock_url, component_name="CocoroCore2")
+        dock_log_handler.setFormatter(formatter)
+        dock_log_handler.setLevel(logging.DEBUG)  # すべてのレベルのログを受け取る
+        root_logger.addHandler(dock_log_handler)
+        set_dock_log_handler(dock_log_handler)  # グローバルに設定
+        print(f"CocoroDock用ログハンドラーを初期化しました（ポート: {dock_port}）")
+    except Exception as e:
+        print(f"CocoroDock用ログハンドラーの初期化に失敗: {e}")
     
     # ログレベル設定
     logging.getLogger("uvicorn").setLevel(logging.INFO)

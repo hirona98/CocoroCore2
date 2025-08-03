@@ -11,6 +11,7 @@ from ..core_app import CocoroCore2App
 from ..core.session_manager import SessionManager
 from ..clients.cocoro_dock_client import CocoroDockClient
 from .models import CoreControlRequest, CoreNotificationRequest, HealthCheckResponse
+from ..log_handler import get_dock_log_handler
 
 
 logger = logging.getLogger(__name__)
@@ -66,17 +67,11 @@ class ControlService:
 
             elif request.command == "start_log_forwarding":
                 # ログ転送開始
-                return {
-                    "status": "success",
-                    "message": "ログ転送は現在実装されていません"
-                }
+                return self._handle_start_log_forwarding()
             
             elif request.command == "stop_log_forwarding":
                 # ログ転送停止
-                return {
-                    "status": "success", 
-                    "message": "ログ転送は現在実装されていません"
-                }
+                return self._handle_stop_log_forwarding()
             
             else:
                 return {
@@ -131,6 +126,54 @@ class ControlService:
         except Exception as e:
             self.logger.error(f"Background shutdown failed: {e}")
     
+    def _handle_start_log_forwarding(self) -> Dict:
+        """ログ転送開始処理"""
+        try:
+            dock_log_handler = get_dock_log_handler()
+            if dock_log_handler is not None:
+                dock_log_handler.set_enabled(True)
+                self.logger.info("ログ転送を開始しました")
+                return {
+                    "status": "success",
+                    "message": "ログ転送を開始しました"
+                }
+            else:
+                self.logger.warning("ログハンドラーが初期化されていません")
+                return {
+                    "status": "error",
+                    "message": "ログハンドラーが初期化されていません"
+                }
+        except Exception as e:
+            self.logger.error(f"ログ転送開始エラー: {e}")
+            return {
+                "status": "error",
+                "message": f"ログ転送開始エラー: {str(e)}"
+            }
+    
+    def _handle_stop_log_forwarding(self) -> Dict:
+        """ログ転送停止処理"""
+        try:
+            dock_log_handler = get_dock_log_handler()
+            if dock_log_handler is not None:
+                dock_log_handler.set_enabled(False)
+                self.logger.info("ログ転送を停止しました")
+                return {
+                    "status": "success",
+                    "message": "ログ転送を停止しました"
+                }
+            else:
+                self.logger.warning("ログハンドラーが初期化されていません")
+                return {
+                    "status": "error",
+                    "message": "ログハンドラーが初期化されていません"
+                }
+        except Exception as e:
+            self.logger.error(f"ログ転送停止エラー: {e}")
+            return {
+                "status": "error",
+                "message": f"ログ転送停止エラー: {str(e)}"
+            }
+
 
 class NotificationService:
     """通知関連サービス"""
