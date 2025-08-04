@@ -1,7 +1,6 @@
 # CocoroCore2 Dependencies - MemOS based unified system
 
-# Core Framework
-MemoryOS[all]>=0.2.1
+MemoryOS>=0.2.1
 fastapi>=0.115.12
 uvicorn>=0.32.0
 

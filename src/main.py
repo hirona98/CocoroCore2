@@ -30,6 +30,18 @@ else:
         sys.path.insert(0, src_path)
     sys.path.insert(0, bundle_dir)
 
+# transformersのモック（外部API使用時のパッケージ容量削減のため）
+try:
+    import transformers
+except ImportError:
+    # transformersが無い場合はモックを使用
+    import sys
+    try:
+        from src import transformers_mock as transformers
+    except ImportError:
+        import transformers_mock as transformers
+    sys.modules['transformers'] = transformers
+
 import uvicorn
 
 try:

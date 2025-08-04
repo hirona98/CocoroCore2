@@ -50,29 +50,27 @@ def create_spec_file():
         data_entries.append(f"('{pydantic_path.as_posix()}', 'pydantic')")
         print(f"✅ pydantic found: {pydantic_path}")
     
-    # Transformers（MemOS依存で必要）
+    # 機械学習ライブラリは除外（外部API使用のため不要）
+    # Transformers（除外：モックで代替）
     transformers_path = site_packages / "transformers"
     if transformers_path.exists():
-        data_entries.append(f"('{transformers_path.as_posix()}', 'transformers')")
-        print(f"✅ transformers found: {transformers_path}")
+        print(f"🚫 transformers found but excluded (external API used): {transformers_path}")
     else:
-        print("⚠️ transformers not found (required by MemOS)")
+        print("✅ transformers not found (not needed - external API used)")
     
-    # Sentence Transformers（MemOS依存で必要）
+    # Sentence Transformers（除外：外部API使用）
     sentence_transformers_path = site_packages / "sentence_transformers"
     if sentence_transformers_path.exists():
-        data_entries.append(f"('{sentence_transformers_path.as_posix()}', 'sentence_transformers')")
-        print(f"✅ sentence_transformers found: {sentence_transformers_path}")
+        print(f"🚫 sentence_transformers found but excluded (external API used): {sentence_transformers_path}")
     else:
-        print("⚠️ sentence_transformers not found (required by MemOS)")
+        print("✅ sentence_transformers not found (not needed - external API used)")
     
-    # PyTorch（transformersに必要）
+    # PyTorch（除外：外部API使用）
     torch_path = site_packages / "torch"
     if torch_path.exists():
-        data_entries.append(f"('{torch_path.as_posix()}', 'torch')")
-        print(f"✅ torch found: {torch_path}")
+        print(f"🚫 torch found but excluded (external API used): {torch_path}")
     else:
-        print("⚠️ torch not found (required by transformers)")
+        print("✅ torch not found (not needed - external API used)")
     
     # SQLAlchemy（MemOS依存で必要）
     sqlalchemy_path = site_packages / "sqlalchemy"
@@ -126,15 +124,14 @@ def create_spec_file():
         'memos',
         'memos.mem_os',
         'memos.mem_os.main',
-        # MemOS依存の機械学習ライブラリ（慎重に最小限追加）
-        'transformers',
-        'transformers.models',
-        'transformers.tokenization_utils',
-        'sentence_transformers',
-        # PyTorch（transformersに必要、最小限）
-        'torch',
-        'torch.nn',
-        'torch.utils',
+        # transformersはモックで代替（RecursionError回避）
+        # 'transformers',
+        # 'transformers.tokenization_utils_base',
+        # 'transformers.models.auto.tokenization_auto',
+        # 'sentence_transformers',
+        # 'torch',  # 除外：外部API使用
+        # 'torch.nn',  # 除外：外部API使用
+        # 'torch.utils',  # 除外：外部API使用
         # SQLAlchemy（MemOSが必要）
         'sqlalchemy',
         'sqlalchemy.engine',
@@ -175,9 +172,14 @@ def create_spec_file():
         ])
     
     # 除外するモジュール（RecursionError対策）
-    # MemOSが必要とするtorch、sqlalchemyも除外リストから削除
+    # 機械学習ライブラリとサブモジュールを除外（外部API使用）
     excludes = [
-        'torchvision',  # torchは必要だが、torchvisionは除外
+        # 機械学習ライブラリ全体を除外
+        'torch',  # 完全除外：外部API使用
+        'torchvision',
+        'transformers',  # 完全除外：モックで代替
+        'sentence_transformers',  # 完全除外：外部API使用
+        'onnxruntime',  # 完全除外：外部API使用（32MB削減）
         'tensorflow', 
         'scipy',
         'matplotlib',
@@ -194,11 +196,6 @@ def create_spec_file():
         'tests',
         'testing',
         'doctest',
-        # 不要なtorchサブモジュール（軽量化）
-        'torch.ao',
-        'torch.distributed',
-        'torch.profiler',
-        'torch.tensorboard',
     ]
     
     # スペックファイルの内容を生成
