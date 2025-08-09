@@ -71,7 +71,7 @@ class CocoroAIConfig(BaseModel):
     scheduler_top_n: int = Field(default=3, description="スケジューラーの上位N件")
     scheduler_act_mem_update_interval: int = Field(default=300, description="アクティベーションメモリ更新間隔（秒）")
     scheduler_context_window_size: int = Field(default=5, description="スケジューラーのコンテキストウィンドウサイズ")
-    scheduler_thread_pool_max_workers: int = Field(default=16, description="スケジューラーの最大ワーカー数")
+    scheduler_thread_pool_max_workers: int = Field(default=8, description="スケジューラーの最大ワーカー数")
     scheduler_consume_interval_seconds: int = Field(default=3, description="メッセージ消費間隔（秒）")
     scheduler_enable_parallel_dispatch: bool = Field(default=True, description="並列メッセージ処理を有効にする")
     scheduler_enable_act_memory_update: bool = Field(default=False, description="アクティベーションメモリ更新を有効にする（API経由LLMでは通常無効）")
