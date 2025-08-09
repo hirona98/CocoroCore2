@@ -162,8 +162,8 @@ class CocoroCore2App:
             self.logger.error(f"Failed to find character for user_id {user_id}: {e}")
             return None
 
-    def _sync_memcube_api_keys(self) -> None:
-        """既存MemCubeのAPIキーを各キャラクター設定から個別同期"""
+    def _sync_memcube_settings(self) -> None:
+        """既存MemCubeの設定を各キャラクター設定から個別同期（APIキー、モデル名など）"""
         import os
         import json
         from pathlib import Path
@@ -172,10 +172,10 @@ class CocoroCore2App:
             # .memos/user_cubesディレクトリ内の全てのMemCubeをチェック
             user_cubes_dir = Path(".memos/user_cubes")
             if not user_cubes_dir.exists():
-                self.logger.debug("No existing MemCubes found for API key sync")
+                self.logger.debug("No existing MemCubes found for settings sync")
                 return
             
-            self.logger.info("Syncing existing MemCube API keys with character-specific settings...")
+            self.logger.info("Syncing existing MemCube settings with character-specific settings...")
             synced_count = 0
             skipped_count = 0
             
@@ -209,95 +209,107 @@ class CocoroCore2App:
                     
                     # キャラクターのMemory機能が無効な場合はスキップ
                     if not getattr(character, 'isEnableMemory', False):
-                        self.logger.debug(f"Memory disabled for character '{character.modelName}' (user_id: {cube_user_id}), skipping API key sync")
+                        self.logger.debug(f"Memory disabled for character '{character.modelName}' (user_id: {cube_user_id}), skipping settings sync")
                         skipped_count += 1
                         continue
                     
-                    # キャラクター固有のAPIキーを取得
+                    # キャラクター固有の設定値を取得
                     api_key = getattr(character, 'apiKey', '') or ""
                     embedded_api_key = getattr(character, 'embeddedApiKey', '') or api_key
+                    llm_model = getattr(character, 'llmModel', '') or "gpt-4o-mini"
+                    embedded_model = getattr(character, 'embeddedModel', '') or "text-embedding-3-large"
                     
-                    # APIキーの有効性チェック
-                    if not api_key.startswith("sk-"):
-                        self.logger.debug(f"No valid API key for character '{character.modelName}' (user_id: {cube_user_id}), skipping sync")
-                        skipped_count += 1
-                        continue
-                    
-                    # APIキーを更新する必要があるかチェック
+                    # 設定を更新する必要があるかチェック
                     needs_update = False
                     
-                    # extractor_llm のAPIキー更新
-                    current_extractor_key = (config_data.get("text_mem", {}).get("config", {})
-                                           .get("extractor_llm", {}).get("config", {}).get("api_key"))
-                    if current_extractor_key != api_key:
-                        if "text_mem" not in config_data:
-                            config_data["text_mem"] = {}
-                        if "config" not in config_data["text_mem"]:
-                            config_data["text_mem"]["config"] = {}
-                        if "extractor_llm" not in config_data["text_mem"]["config"]:
-                            config_data["text_mem"]["config"]["extractor_llm"] = {}
-                        if "config" not in config_data["text_mem"]["config"]["extractor_llm"]:
-                            config_data["text_mem"]["config"]["extractor_llm"]["config"] = {}
+                    # text_mem構造の初期化（共通処理）
+                    if "text_mem" not in config_data:
+                        config_data["text_mem"] = {}
+                    if "config" not in config_data["text_mem"]:
+                        config_data["text_mem"]["config"] = {}
+                    
+                    # extractor_llm の設定更新
+                    if "extractor_llm" not in config_data["text_mem"]["config"]:
+                        config_data["text_mem"]["config"]["extractor_llm"] = {}
+                    if "config" not in config_data["text_mem"]["config"]["extractor_llm"]:
+                        config_data["text_mem"]["config"]["extractor_llm"]["config"] = {}
+                    
+                    extractor_config = config_data["text_mem"]["config"]["extractor_llm"]["config"]
+                    
+                    # APIキーの更新（APIキーが有効な場合のみ）
+                    if api_key and api_key.startswith("sk-") and extractor_config.get("api_key") != api_key:
+                        extractor_config["api_key"] = api_key
+                        needs_update = True
                         
-                        config_data["text_mem"]["config"]["extractor_llm"]["config"]["api_key"] = api_key
+                    # モデル名の更新（常時）
+                    if extractor_config.get("model_name_or_path") != llm_model:
+                        extractor_config["model_name_or_path"] = llm_model
                         needs_update = True
                     
-                    # dispatcher_llm のAPIキー更新
-                    current_dispatcher_key = (config_data.get("text_mem", {}).get("config", {})
-                                            .get("dispatcher_llm", {}).get("config", {}).get("api_key"))
-                    if current_dispatcher_key != api_key:
-                        if "text_mem" not in config_data:
-                            config_data["text_mem"] = {}
-                        if "config" not in config_data["text_mem"]:
-                            config_data["text_mem"]["config"] = {}
-                        if "dispatcher_llm" not in config_data["text_mem"]["config"]:
-                            config_data["text_mem"]["config"]["dispatcher_llm"] = {}
-                        if "config" not in config_data["text_mem"]["config"]["dispatcher_llm"]:
-                            config_data["text_mem"]["config"]["dispatcher_llm"]["config"] = {}
+                    # dispatcher_llm の設定更新
+                    if "dispatcher_llm" not in config_data["text_mem"]["config"]:
+                        config_data["text_mem"]["config"]["dispatcher_llm"] = {}
+                    if "config" not in config_data["text_mem"]["config"]["dispatcher_llm"]:
+                        config_data["text_mem"]["config"]["dispatcher_llm"]["config"] = {}
+                    
+                    dispatcher_config = config_data["text_mem"]["config"]["dispatcher_llm"]["config"]
+                    
+                    # APIキーの更新（APIキーが有効な場合のみ）
+                    if api_key and api_key.startswith("sk-") and dispatcher_config.get("api_key") != api_key:
+                        dispatcher_config["api_key"] = api_key
+                        needs_update = True
                         
-                        config_data["text_mem"]["config"]["dispatcher_llm"]["config"]["api_key"] = api_key
+                    # モデル名の更新（常時）
+                    if dispatcher_config.get("model_name_or_path") != llm_model:
+                        dispatcher_config["model_name_or_path"] = llm_model
                         needs_update = True
                     
-                    # embedder のAPIキー更新
-                    current_embedder_key = (config_data.get("text_mem", {}).get("config", {})
-                                          .get("embedder", {}).get("config", {}).get("api_key"))
-                    if current_embedder_key != embedded_api_key:
-                        if "text_mem" not in config_data:
-                            config_data["text_mem"] = {}
-                        if "config" not in config_data["text_mem"]:
-                            config_data["text_mem"]["config"] = {}
-                        if "embedder" not in config_data["text_mem"]["config"]:
-                            config_data["text_mem"]["config"]["embedder"] = {}
-                        if "config" not in config_data["text_mem"]["config"]["embedder"]:
-                            config_data["text_mem"]["config"]["embedder"]["config"] = {}
-                        
-                        config_data["text_mem"]["config"]["embedder"]["config"]["api_key"] = embedded_api_key
+                    # embedder の設定更新
+                    if "embedder" not in config_data["text_mem"]["config"]:
+                        config_data["text_mem"]["config"]["embedder"] = {}
+                    if "config" not in config_data["text_mem"]["config"]["embedder"]:
+                        config_data["text_mem"]["config"]["embedder"]["config"] = {}
+                    
+                    embedder_config = config_data["text_mem"]["config"]["embedder"]["config"]
+                    
+                    # APIキーの更新（有効なAPIキーがある場合）
+                    effective_embedded_key = embedded_api_key if embedded_api_key and embedded_api_key.startswith("sk-") else (api_key if api_key and api_key.startswith("sk-") else None)
+                    if effective_embedded_key and embedder_config.get("api_key") != effective_embedded_key:
+                        embedder_config["api_key"] = effective_embedded_key
+                        needs_update = True
+                    
+                    # 埋め込みモデル名の更新（常時）
+                    if embedder_config.get("model_name_or_path") != embedded_model:
+                        embedder_config["model_name_or_path"] = embedded_model
                         needs_update = True
                     
                     # 更新が必要な場合のみファイルを書き換え
                     if needs_update:
                         with open(config_file, 'w', encoding='utf-8') as f:
                             json.dump(config_data, f, indent=2, ensure_ascii=False)
-                        self.logger.info(f"Updated API keys in MemCube '{cube_dir.name}' for character '{character.modelName}' (user_id: {cube_user_id})")
+                        self.logger.info(f"Updated settings in MemCube '{cube_dir.name}' for character '{character.modelName}' (user_id: {cube_user_id})")
+                        self.logger.debug(f"  - LLM Model: {llm_model}")
+                        self.logger.debug(f"  - Embedded Model: {embedded_model}")
+                        self.logger.debug(f"  - API Key: {'Valid' if api_key and api_key.startswith('sk-') else 'Empty/Invalid'}")
                         synced_count += 1
                     else:
-                        self.logger.debug(f"API keys already up-to-date in MemCube '{cube_dir.name}' for character '{character.modelName}' (user_id: {cube_user_id})")
+                        self.logger.debug(f"Settings already up-to-date in MemCube '{cube_dir.name}' for character '{character.modelName}' (user_id: {cube_user_id})")
                 
                 except Exception as e:
-                    self.logger.error(f"Failed to sync API keys in MemCube {cube_dir.name}: {e}")
+                    self.logger.error(f"Failed to sync settings in MemCube {cube_dir.name}: {e}")
                     skipped_count += 1
             
-            self.logger.info(f"MemCube API key sync completed: {synced_count} updated, {skipped_count} skipped")
+            self.logger.info(f"MemCube settings sync completed: {synced_count} updated, {skipped_count} skipped")
             
         except Exception as e:
-            self.logger.error(f"Failed to sync MemCube API keys: {e}")
+            self.logger.error(f"Failed to sync MemCube settings: {e}")
 
     def _should_use_custom_openai_wrapper(self) -> bool:
         """カスタムOpenAIラッパーを使用すべきか判定"""
         # MOSのchat_llmがOpenAILLMかチェック
         from memos.llms.openai import OpenAILLM
         
-        self.logger.info(f"[WRAPPER_CHECK] Checking if custom wrapper should be applied...")
+        self.logger.info("[WRAPPER_CHECK] Checking if custom wrapper should be applied...")
         self.logger.info(f"[WRAPPER_CHECK] chat_llm type: {type(self.mos.chat_llm)}")
         
         if not isinstance(self.mos.chat_llm, OpenAILLM):
@@ -384,7 +396,7 @@ class CocoroCore2App:
                 elif type(attr_value) not in (str, int, float, bool, type(None)):
                     try:
                         self._replace_all_openai_llms(attr_value, new_class, target_class, current_path, visited)
-                    except Exception as e:
+                    except Exception:
                         # 再帰検索中のエラーは無視（循環参照など）
                         pass
 
@@ -410,7 +422,7 @@ class CocoroCore2App:
             self.logger.info("Starting CocoroCore2App...")
 
             # 既存MemCubeのAPIキーを設定ファイルから同期（Neo4j起動前に実行）
-            self._sync_memcube_api_keys()
+            self._sync_memcube_settings()
 
 
             # デフォルトユーザーを作成
