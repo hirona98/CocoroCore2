@@ -440,17 +440,6 @@ class CocoroCore2App:
             # MemCube確実に作成
             self._ensure_user_memcube(self.default_user_id)
 
-            # テスト用のメモリ追加で動作確認
-            try:
-                test_content = f"System startup at {datetime.now().isoformat()}"
-                self.mos.add(memory_content=test_content, user_id=self.default_user_id)
-                self.logger.info("MemOS functionality verified")
-            except Exception as e:
-                self.logger.warning(f"MemOS test failed: {e}")
-                # MemCube作成を再試行
-                self.logger.info("Retrying MemCube creation...")
-                self._ensure_user_memcube(self.default_user_id)
-
             self.is_running = True
 
             # MemOS高度機能の状態表示
