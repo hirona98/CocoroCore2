@@ -42,6 +42,14 @@ class CocoroCore2App:
             # MOSConfig作成
             mos_config = get_mos_config(config)
             self.mos = MOS(mos_config)
+            
+            # カスタムOpenAILLMラッパーを適用（新しいモデル対応）
+            self.logger.info("[MOS_INIT] Checking if custom wrapper should be applied...")
+            if self._should_use_custom_openai_wrapper():
+                self.logger.info("[MOS_INIT] Will apply custom wrapper")
+                self._apply_custom_openai_wrapper()
+            else:
+                self.logger.info("[MOS_INIT] Custom wrapper not needed")
 
             # デフォルトユーザーID設定
             memos_config_data = generate_memos_config_from_setting(config)
@@ -284,6 +292,118 @@ class CocoroCore2App:
         except Exception as e:
             self.logger.error(f"Failed to sync MemCube API keys: {e}")
 
+    def _should_use_custom_openai_wrapper(self) -> bool:
+        """カスタムOpenAIラッパーを使用すべきか判定"""
+        # MOSのchat_llmがOpenAILLMかチェック
+        from memos.llms.openai import OpenAILLM
+        
+        self.logger.info(f"[WRAPPER_CHECK] Checking if custom wrapper should be applied...")
+        self.logger.info(f"[WRAPPER_CHECK] chat_llm type: {type(self.mos.chat_llm)}")
+        
+        if not isinstance(self.mos.chat_llm, OpenAILLM):
+            self.logger.info("[WRAPPER_CHECK] chat_llm is not OpenAILLM, skipping wrapper")
+            return False
+        
+        # モデル名をチェック（新しいモデルかどうか）
+        model_name = self.mos.chat_llm.config.model_name_or_path
+        new_models = ["gpt-4o", "o1", "o3", "gpt-5"]  # 新しいモデルのプレフィックス
+        
+        self.logger.info(f"[WRAPPER_CHECK] Model name: {model_name}")
+        self.logger.info(f"[WRAPPER_CHECK] Checking against prefixes: {new_models}")
+        
+        is_new_model = any(model_name.startswith(prefix) for prefix in new_models)
+        
+        if is_new_model:
+            self.logger.info(f"[WRAPPER_CHECK] ✓ Detected new OpenAI model: {model_name}, will apply custom wrapper")
+        else:
+            self.logger.info(f"[WRAPPER_CHECK] ✗ Model {model_name} is not a new model, skipping wrapper")
+        
+        return is_new_model
+
+    def _apply_custom_openai_wrapper(self):
+        """カスタムOpenAILLMラッパーを適用"""
+        self.logger.info("[WRAPPER_APPLY] Starting to apply custom OpenAI wrapper...")
+        
+        from .memos_wrapper import CocoroOpenAILLM
+        from memos.llms.openai import OpenAILLM
+        
+        # 包括的にOpenAILLMインスタンスを検索して置き換え
+        self._replace_all_openai_llms(self.mos, CocoroOpenAILLM, OpenAILLM)
+        
+        self.logger.info("[WRAPPER_APPLY] Custom wrapper application completed!")
+    
+    def _replace_all_openai_llms(self, obj, new_class, target_class, path="mos", visited=None):
+        """オブジェクト内のすべてのOpenAILLMインスタンスを再帰的に検索して置き換え"""
+        if visited is None:
+            visited = set()
+        
+        # 無限ループ防止
+        if id(obj) in visited:
+            return
+        visited.add(id(obj))
+        
+        # オブジェクトの属性をチェック
+        if hasattr(obj, '__dict__'):
+            for attr_name, attr_value in obj.__dict__.items():
+                current_path = f"{path}.{attr_name}"
+                
+                # OpenAILLMインスタンスを発見した場合
+                if isinstance(attr_value, target_class):
+                    self.logger.info(f"[WRAPPER_REPLACE] Found OpenAILLM at {current_path}")
+                    # 新しいインスタンスに置き換え
+                    new_instance = new_class(attr_value.config)
+                    setattr(obj, attr_name, new_instance)
+                    self.logger.info(f"[WRAPPER_REPLACE] ✓ Replaced {current_path} with CocoroOpenAILLM")
+                
+                # リストやタプルの中もチェック
+                elif type(attr_value) in (list, tuple):
+                    for i, item in enumerate(attr_value):
+                        if isinstance(item, target_class):
+                            self.logger.info(f"[WRAPPER_REPLACE] Found OpenAILLM at {current_path}[{i}]")
+                            new_instance = new_class(item.config)
+                            if type(attr_value) is list:
+                                attr_value[i] = new_instance
+                            self.logger.info(f"[WRAPPER_REPLACE] ✓ Replaced {current_path}[{i}] with CocoroOpenAILLM")
+                        else:
+                            # リスト内のオブジェクトも再帰的にチェック
+                            self._replace_all_openai_llms(item, new_class, target_class, f"{current_path}[{i}]", visited)
+                
+                # 辞書の中もチェック
+                elif type(attr_value) is dict:
+                    for key, value in attr_value.items():
+                        if isinstance(value, target_class):
+                            self.logger.info(f"[WRAPPER_REPLACE] Found OpenAILLM at {current_path}[{key}]")
+                            new_instance = new_class(value.config)
+                            attr_value[key] = new_instance
+                            self.logger.info(f"[WRAPPER_REPLACE] ✓ Replaced {current_path}[{key}] with CocoroOpenAILLM")
+                        else:
+                            # 辞書内のオブジェクトも再帰的にチェック
+                            self._replace_all_openai_llms(value, new_class, target_class, f"{current_path}[{key}]", visited)
+                
+                # その他のオブジェクトも再帰的にチェック（基本型は除外）
+                elif type(attr_value) not in (str, int, float, bool, type(None)):
+                    try:
+                        self._replace_all_openai_llms(attr_value, new_class, target_class, current_path, visited)
+                    except Exception as e:
+                        # 再帰検索中のエラーは無視（循環参照など）
+                        pass
+
+    def _apply_wrapper_to_memcube(self, mem_cube):
+        """個々のMemCube内のLLMにラッパーを適用"""
+        from .memos_wrapper import CocoroOpenAILLM
+        from memos.llms.openai import OpenAILLM
+        
+        if not self._should_use_custom_openai_wrapper():
+            return
+        
+        cube_id = getattr(mem_cube, 'config', {})
+        cube_id = getattr(cube_id, 'cube_id', 'unknown') if hasattr(cube_id, 'cube_id') else 'unknown'
+        
+        self.logger.info(f"[WRAPPER_APPLY] Applying wrapper to MemCube: {cube_id}")
+        
+        # MemCube全体に対して包括的な置き換えを実行
+        self._replace_all_openai_llms(mem_cube, CocoroOpenAILLM, OpenAILLM, f"memcube.{cube_id}")
+
     async def startup(self):
         """アプリケーション起動処理"""
         try:
@@ -422,11 +542,14 @@ class CocoroCore2App:
             # MOSでのチャット処理（応答生成）
             response = self.mos.chat(query=full_query, user_id=effective_user_id)
 
+            # 応答ログ記録（デバッグ用）
+            self.logger.info(f"Chat response: {len(response)} characters")
+
             # 記憶保存を非同期で実行（応答返却をブロックしない）
             messages = [{"role": "user", "content": query}, {"role": "assistant", "content": response}]
             asyncio.create_task(self._save_conversation_memory_async(messages, effective_user_id))
 
-            self.logger.debug(f"Chat response: {len(response)} characters (memory saving in background)")
+            self.logger.info(f"Completed chat processing for user {effective_user_id} (memory saving in background)")
             return response
 
         except Exception as e:
@@ -436,12 +559,13 @@ class CocoroCore2App:
     async def _save_conversation_memory_async(self, messages, user_id: str):
         """会話記憶の非同期保存処理（バックグラウンドタスク）"""
         try:
+            self.logger.info(f"Starting memory save for user {user_id}")
             # asyncio.to_thread() を使用してブロッキング処理を別スレッドで実行
             await asyncio.to_thread(self.mos.add, messages=messages, user_id=user_id)
-            self.logger.debug(f"[OK] Memory saved asynchronously for user {user_id}")
+            self.logger.info(f"Memory saved successfully for user {user_id}")
         except Exception as e:
-            # バックグラウンドタスクなので例外を上に伝播せず、ログ出力のみ
-            self.logger.warning(f"[ERR] Failed to save conversation memory asynchronously: {e}")
+            self.logger.error(f"Failed to save memory for user {user_id}: {e}")
+            # メモリ保存失敗は致命的ではないので例外は再発生させない
 
     def add_memory(self, content: str, user_id: Optional[str] = None, session_id: Optional[str] = None, **context) -> None:
         """記憶追加（スケジューラー連携付き）
@@ -721,6 +845,8 @@ class CocoroCore2App:
                                 mem_cube = GeneralMemCube.init_from_dir(cube_path)
                                 # MemCubeオブジェクトを直接登録してIDの重複を回避
                                 self.mos.register_mem_cube(mem_cube, user_id=user_id)
+                                # 再登録されたMemCube内のLLMにもラッパーを適用
+                                self._apply_wrapper_to_memcube(mem_cube)
                                 self.logger.info(f"Successfully re-registered MemCube from {cube_path}")
                             else:
                                 # MemCubeディレクトリが存在しない場合は新規作成が必要
@@ -755,6 +881,9 @@ class CocoroCore2App:
 
             # MOSにMemCubeを直接登録（メモリ内管理）
             self.mos.register_mem_cube(mem_cube, user_id=user_id)
+            
+            # 新しく作成されたMemCube内のLLMにもラッパーを適用
+            self._apply_wrapper_to_memcube(mem_cube)
 
             # 登録後のMemCube確認
             registered_cubes = self.mos.user_manager.get_user_cubes(user_id)

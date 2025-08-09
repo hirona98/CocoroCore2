@@ -48,12 +48,14 @@ try:
     from src.app import app
     from src.config import CocoroAIConfig, parse_args, ConfigurationError
     from src.log_handler import CocoroDockLogHandler, set_dock_log_handler
+    from src.truncating_formatter import TruncatingFormatter
 except ImportError as e:
     # PyInstaller環境でのフォールバック
     try:
         from app import app
         from config import CocoroAIConfig, parse_args, ConfigurationError
         from log_handler import CocoroDockLogHandler, set_dock_log_handler
+        from truncating_formatter import TruncatingFormatter
     except ImportError:
         print(f"モジュールのインポートに失敗しました: {e}")
         print("PyInstallerビルド設定を確認してください")
@@ -73,15 +75,17 @@ def setup_logging(config: CocoroAIConfig):
     
     # ログフォーマット
     formatter = logging.Formatter(config.logging.format)
+    # 切り詰めフォーマッター（コンソール用）
+    truncating_formatter = TruncatingFormatter(config.logging.format, max_length=200)
     
     # ルートロガー設定
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
     
-    # コンソールハンドラー
+    # コンソールハンドラー（切り詰めフォーマッター使用）
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(log_level)
-    console_handler.setFormatter(formatter)
+    console_handler.setFormatter(truncating_formatter)
     root_logger.addHandler(console_handler)
     
     # ファイルハンドラー
@@ -125,6 +129,7 @@ def setup_logging(config: CocoroAIConfig):
     logging.getLogger("httpcore.connection").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.INFO)
     logging.getLogger("memos.llms.openai").setLevel(logging.WARNING)
+    logging.getLogger("memos.memories.textual.tree_text_memory.retrieve.searcher").setLevel(logging.ERROR)
 
 # グローバル終了フラグ
 shutdown_event = asyncio.Event()
