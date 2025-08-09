@@ -30,11 +30,25 @@ else:
         sys.path.insert(0, src_path)
     sys.path.insert(0, bundle_dir)
 
-# transformersのモック（外部API使用時のパッケージ容量削減のため）
-try:
-    import transformers
-except ImportError:
-    # transformersが無い場合はモックを使用
+# グローバル変数（遅延インポート用）
+app = None
+CocoroAIConfig = None
+parse_args = None
+ConfigurationError = None
+CocoroDockLogHandler = None
+set_dock_log_handler = None
+TruncatingFormatter = None
+uvicorn = None
+
+
+def load_heavy_modules():
+    """重いモジュールを遅延ロード"""
+    global app, CocoroAIConfig, parse_args, ConfigurationError
+    global CocoroDockLogHandler, set_dock_log_handler, TruncatingFormatter, uvicorn
+    
+    print("Loading modules...")
+    
+    # transformersのモック（外部API使用時のパッケージ容量削減のため）
     import sys
     try:
         from src import transformers_mock as transformers
@@ -42,24 +56,24 @@ except ImportError:
         import transformers_mock as transformers
     sys.modules['transformers'] = transformers
 
-import uvicorn
+    import uvicorn
 
-try:
-    from src.app import app
-    from src.config import CocoroAIConfig, parse_args, ConfigurationError
-    from src.log_handler import CocoroDockLogHandler, set_dock_log_handler
-    from src.truncating_formatter import TruncatingFormatter
-except ImportError as e:
-    # PyInstaller環境でのフォールバック
     try:
-        from app import app
-        from config import CocoroAIConfig, parse_args, ConfigurationError
-        from log_handler import CocoroDockLogHandler, set_dock_log_handler
-        from truncating_formatter import TruncatingFormatter
-    except ImportError:
-        print(f"モジュールのインポートに失敗しました: {e}")
-        print("PyInstallerビルド設定を確認してください")
-        sys.exit(1)
+        from src.app import app
+        from src.config import CocoroAIConfig, parse_args, ConfigurationError
+        from src.log_handler import CocoroDockLogHandler, set_dock_log_handler
+        from src.truncating_formatter import TruncatingFormatter
+    except ImportError as e:
+        # PyInstaller環境でのフォールバック
+        try:
+            from app import app
+            from config import CocoroAIConfig, parse_args, ConfigurationError
+            from log_handler import CocoroDockLogHandler, set_dock_log_handler
+            from truncating_formatter import TruncatingFormatter
+        except ImportError:
+            print(f"モジュールのインポートに失敗しました: {e}")
+            print("PyInstallerビルド設定を確認してください")
+            sys.exit(1)
 
 
 # ログ設定
@@ -267,9 +281,53 @@ def print_banner(config: CocoroAIConfig):
     print(banner)
 
 
+async def start_neo4j_early(config: CocoroAIConfig):
+    """Neo4jを早期に起動"""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Neo4j Managerのインポート（軽量）
+        from src.core.neo4j_manager import Neo4jManager
+        
+        # Neo4j組み込みが有効かチェック
+        current_char = config.characterList[config.currentCharacterIndex]
+        neo4j_embedding_enable = current_char.isEnableMemory
+        if not neo4j_embedding_enable:
+            logger.info("Embedded Neo4j is disabled")
+            return None
+            
+        # Neo4jマネージャー作成
+        neo4j_config = {
+            "uri": f"bolt://127.0.0.1:{config.cocoroMemoryDBPort}",
+            "web_port": config.cocoroMemoryWebPort,
+            "embedded_enabled": neo4j_embedding_enable
+        }
+        neo4j_manager = Neo4jManager(config=neo4j_config)
+        
+        # Neo4j起動（非同期）
+        logger.info("Starting embedded Neo4j service early...")
+        started = await neo4j_manager.start()
+        
+        if started:
+            logger.info("Early Neo4j startup completed")
+            return neo4j_manager
+        else:
+            logger.error("Early Neo4j startup failed")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Failed to start Neo4j early: {e}")
+        return None
+
+
 async def main():
     """メイン実行関数"""
     try:
+        print("CocoroCore2 starting...")
+        
+        # 軽いモジュール（設定系）を先にロード
+        from src.config import CocoroAIConfig, parse_args, ConfigurationError
+        
         # コマンドライン引数解析
         args = parse_args()
         
@@ -290,6 +348,17 @@ async def main():
             print(f"設定エラー: {e}")
             sys.exit(1)
         
+        # Neo4j起動タスクを開始（重いモジュールロードと並列化）
+        print("Starting Neo4j in background...")
+        neo4j_task = asyncio.create_task(start_neo4j_early(config))
+        
+        # Neo4j起動中に重いモジュールを並列ロード
+        print("Loading heavy modules while Neo4j starts...")
+        modules_task = asyncio.create_task(asyncio.to_thread(load_heavy_modules))
+        
+        # モジュールロード完了を待つ
+        await modules_task
+        
         # ログ設定
         setup_logging(config)
         logger = logging.getLogger(__name__)
@@ -302,6 +371,14 @@ async def main():
         
         # シグナルハンドラー設定
         setup_signal_handlers()
+        
+        # Neo4j起動完了を待つ
+        logger.info("Waiting for Neo4j startup completion...")
+        neo4j_manager = await neo4j_task
+        
+        # Neo4jマネージャーをアプリケーション設定に保存
+        if neo4j_manager:
+            app.state.early_neo4j_manager = neo4j_manager
         
         # サーバー実行
         await run_server(config)

@@ -412,22 +412,6 @@ class CocoroCore2App:
             # 既存MemCubeのAPIキーを設定ファイルから同期（Neo4j起動前に実行）
             self._sync_memcube_api_keys()
 
-            # Neo4j組み込みサービス起動（MOSより前に起動）
-            if self.neo4j_manager:
-                self.logger.info("Starting embedded Neo4j service...")
-                try:
-                    neo4j_started = await self.neo4j_manager.start()
-                    if neo4j_started:
-                        self.logger.info("Embedded Neo4j service started successfully")
-                    else:
-                        self.logger.error("Failed to start embedded Neo4j service")
-                        # Neo4j起動失敗は致命的エラーとして扱う（TreeTextMemoryに必要）
-                        raise RuntimeError("Neo4j startup failed - required for TreeTextMemory")
-                except Exception as e:
-                    self.logger.error(f"Neo4j startup error: {e}")
-                    raise
-            else:
-                self.logger.info("Embedded Neo4j is disabled - expecting external Neo4j")
 
             # デフォルトユーザーを作成
             try:

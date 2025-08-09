@@ -36,6 +36,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         
         # コアアプリケーション初期化
         app_instance = CocoroCore2App(config)
+        
+        # 早期起動されたNeo4jマネージャーを設定
+        if hasattr(app, 'state') and hasattr(app.state, 'early_neo4j_manager'):
+            app_instance.neo4j_manager = app.state.early_neo4j_manager
+        
         await app_instance.startup()
         
         # セッション管理初期化

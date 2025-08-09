@@ -48,6 +48,7 @@ class CocoroAIConfig(BaseModel):
     cocoroCorePort: int = 55601
     cocoroMemoryPort: int = 55602
     cocoroMemoryDBPort: int = 55603
+    cocoroMemoryWebPort: int = 55606
     cocoroShellPort: int = 55605
     isEnableMcp: bool = True
 
