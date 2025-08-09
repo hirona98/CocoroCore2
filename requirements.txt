@@ -6,6 +6,7 @@ uvicorn>=0.32.0
 
 # HTTP & Communication
 httpx>=0.28.1
+requests>=2.32.0
 websockets>=13.1
 
 # LLM Integration
